@@ -1,4 +1,4 @@
- /*
+/*
  * @BEGIN LICENSE
  *
  * Psi4: an open-source quantum chemistry software package
@@ -38,6 +38,8 @@
 
 #include "psi4/libfock/jk.h"
 #include "psi4/libfock/soscf.h"
+
+#include "psi4/cc/ccwave.h"
 
 #include "psi4/detci/ciwave.h"
 #include "psi4/detci/civect.h"
@@ -152,7 +154,9 @@ void export_wavefunction(py::module& m) {
         .def("force_doccpi", &Wavefunction::force_doccpi, "Specialized expert use only. Sets the number of doubly occupied oribtals per irrep. Note that this results in inconsistent Wavefunction objects for SCF, so caution is advised.")
         .def("soccpi", &Wavefunction::soccpi, py::return_value_policy::copy,
              "Returns the number of singly occupied orbitals per irrep.")
-        .def("force_soccpi", &Wavefunction::force_soccpi, "Specialized expert use only. Sets the number of singly occupied oribtals per irrep. Note that this results in inconsistent Wavefunction objects for SCF, so caution is advised.")
+        .def("force_soccpi", &Wavefunction::force_soccpi,
+             "Specialized expert use only. Sets the number of singly occupied oribtals per irrep. Note that this "
+             "results in inconsistent Wavefunction objects for SCF, so caution is advised.")
         .def("nsopi", &Wavefunction::nsopi, py::return_value_policy::copy,
              "Returns the number of symmetry orbitals per irrep.")
         .def("nmopi", &Wavefunction::nmopi, py::return_value_policy::copy,
@@ -312,8 +316,7 @@ void export_wavefunction(py::module& m) {
         .def("elst", &fisapt::FISAPT::elst, "SAPT0 electrostatics.")
         .def("exch", &fisapt::FISAPT::exch, "SAPT0 exchange.")
         .def("ind", &fisapt::FISAPT::ind, "SAPT0 induction.")
-        .def("disp", &fisapt::FISAPT::disp,
-             "Computes the MP2-based DispE20 and Exch-DispE20 energy.")
+        .def("disp", &fisapt::FISAPT::disp, "Computes the MP2-based DispE20 and Exch-DispE20 energy.")
         .def("flocalize", &fisapt::FISAPT::flocalize, "F-SAPT0 localize.")
         .def("felst", &fisapt::FISAPT::felst, "F-SAPT0 electrostatics.")
         .def("fexch", &fisapt::FISAPT::fexch, "F-SAPT0 exchange.")
@@ -387,4 +390,30 @@ void export_wavefunction(py::module& m) {
         .def("close_io_files", &detci::CIvect::close_io_files, "docstring")
         .def("set_nvec", &detci::CIvect::set_nvect, "docstring")
         .def_buffer([](detci::CIvect& vec) { return vec.array_interface(); });
+
+    py::class_<ccenergy::CCEnergyWavefunction, std::shared_ptr<ccenergy::CCEnergyWavefunction>, Wavefunction>(
+        m, "CCWavefunction", "docstring")
+        .def(py::init<std::shared_ptr<Wavefunction>, Options&>())
+        .def("get_amplitudes", &ccenergy::CCEnergyWavefunction::get_amplitudes, R"docstring(
+               Get dict of converged T amplitudes
+
+               Returns
+               -------
+               amps : dict (spacestr, SharedMatrix)
+                 `spacestr` is a description of the amplitude set using the conventions for orbital index labels that is used in the CC module.
+
+                 i,j,k -> alpha occupied
+                 I,J,K -> beta occupied
+                 a,b,c -> alpha virtual
+                 A,B,C -> beta virtual
+
+               The following entries are stored in the `amps`, depending on the reference type
+
+               RHF: Tia, TIjAb
+               UHF: Tia, TIA, TIjAb, TIJAB, Tijab
+               ROHF: Tia, TIA, TIjAb, TIJAB, Tijab
+
+               .. warning: Symmetry free calculations only (nirreps > 1 will cause error)
+               .. warning: No checks that the amplitudes will fit in core. Do not use for proteins
+            )docstring");
 }
