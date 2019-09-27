@@ -672,6 +672,114 @@ class U_Embedding:
             sum +=  self.fragments[i].Db.np
         return sum
 
+    def find_vp_response(self, maxiter=21, atol=2e-4, guess=None):
+        """
+        Using the inverse of static response function to update dvp from a dn.
+        See Jonathan's Thesis 5.4 5.5 5.6.
+        :param maxiter: maximum iterations
+        :param atol: convergence criteria
+        :param guess: initial guess
+        :return:
+        """
+
+        print("<<<<<<<<<<<<<<<<<<<<<<Compute_Method_Response<<<<<<<<<<<<<<<<<<<")
+        # Prepare for tha auxiliary basis set.
+        aux_basis = psi4.core.BasisSet.build(self.molecule.geometry, "DF_BASIS_SCF", "",
+                                             "JKFIT", self.molecule.basis)
+        S_Pmn_ao = np.squeeze(self.molecule.mints.ao_3coverlap(aux_basis, self.molecule.wfn.basisset(),
+                                                               self.molecule.wfn.basisset()))
+        S_Pmn_ao = 0.5*(np.transpose(S_Pmn_ao, (0, 2, 1)) + S_Pmn_ao)
+        S_PQ = np.array(self.molecule.mints.ao_overlap(aux_basis, aux_basis))
+        S_PQ = 0.5*(S_PQ.T + S_PQ)
+        # S_Pm_ao = np.array(self.mints.ao_overlap(aux_basis, self.e_wfn.basisset()))
+        S_PQinv = np.linalg.pinv(S_PQ, rcond=1e-15)
+        S_PQinv = 0.5 * (S_PQinv.T + S_PQinv)
+        fouroverlap = np.einsum('Pmn,PQ,Qrs->mnrs', S_Pmn_ao, S_PQinv, S_Pmn_ao, optimize=True)
+        if guess is None:
+            vp_a = psi4.core.Matrix.from_array(np.zeros_like(self.molecule.Da.np))
+            vp_b = psi4.core.Matrix.from_array(np.zeros_like(self.molecule.Db.np))
+            vp_total = psi4.core.Matrix.from_array(np.zeros_like(self.molecule.Db.np))
+            vp = [vp_a, vp_b]
+        # else:
+        #    vp_guess
+
+        for scf_step in range(maxiter + 1):
+
+            total_density_a = np.zeros_like(self.molecule.Da.np)
+            total_density_b = np.zeros_like(self.molecule.Db.np)
+            total_energies = 0.0
+            density_convergence = 0.0
+
+            for i in range(self.nfragments):
+                density_a, density_b, energy, _ = self.fragments[i].scf(vp_add=True, vp_matrix=vp)
+
+                total_density_a += density_a.np
+                total_density_b += density_b.np
+
+                total_energies += energy
+
+            # if np.isclose( total_densities.sum(),self.molecule.D.sum(), atol=1e-5) :
+            if np.isclose(total_energies, self.molecule.energy, atol):
+                break
+
+            # if scf_step == maxiter:
+            #    raise Exception("Maximum number of SCF cycles exceeded for vp.")
+
+            print(
+                F'Iteration: {scf_step} Delta_E = {total_energies - self.molecule.energy} Delta_D = {total_density_a.sum() + total_density_b.sum() - (self.molecule.Da.np.sum() + self.molecule.Db.np.sum())}')
+            """
+            For each fragment, v_p(r) = \sum_{alpha}C_{ij}dD_{mn}\phi_i(r)\phi_j(r)(ijmn) = C_{ij}dD_{mn}\phi_i(r)\phi_j(r)(Cij)(CD)^{-1}(Dmn)
+            v_{p,uv} = \sum_{alpha}C_{ij}dD_{mn}(Aij)(AB)^{-1}(Buv)(Cij)(CD)^{-1}(Dmn)
+
+            1) Un-orthogonalized
+            2) I did not use alpha and beta wave functions to update Kai inverse. I should.
+            """
+            # Store \sum_{alpha}C_{ij}
+            C_a = np.zeros_like(S_Pmn_ao)
+            C_b = np.zeros_like(S_Pmn_ao)
+            for i in self.fragments:
+                # GET dvp
+                # matrices for epsilon_i - epsilon_j. M
+                epsilon_occ_a = i.wfn.epsilon_a().np[:i.wfn.nalpha(), None]
+                epsilon_occ_b = i.wfn.epsilon_b().np[:i.wfn.nbeta(), None]
+                epsilon_unocc_a = i.wfn.epsilon_a().np[i.wfn.nalpha():]
+                epsilon_unocc_b = i.wfn.epsilon_b().np[i.wfn.nbeta():]
+                epsilon_a = epsilon_occ_a - epsilon_unocc_a
+                epsilon_b = epsilon_occ_b - epsilon_unocc_b
+
+                # S_Pmn_mo
+                S_Pmn_mo_a = np.einsum('mi,nj,Pmn->Pij', i.wfn.Ca().np, i.wfn.Ca().np, S_Pmn_ao, optimize=True)
+                S_Pmn_mo_b = np.einsum('mi,nj,Pmn->Pij', i.wfn.Cb().np, i.wfn.Cb().np, S_Pmn_ao, optimize=True)
+
+                # Normalization
+                fouroverlap_a = np.einsum('mij,nij,mn->ij', S_Pmn_mo_a[:, :i.wfn.nalpha(), i.wfn.nalpha():], S_Pmn_mo_a[:, :i.wfn.nalpha(), i.wfn.nalpha():], S_PQinv, optimize=True)
+                fouroverlap_b = np.einsum('mij,nij,mn->ij', S_Pmn_mo_b[:, :i.wfn.nbeta(), i.wfn.nbeta():], S_Pmn_mo_b[:, :i.wfn.nbeta(), i.wfn.nbeta():], S_PQinv, optimize=True)
+
+                C_a += np.einsum('ai,bj,Cij,ij -> Cab', i.wfn.Ca().np[:, :i.wfn.nalpha()], i.wfn.Ca().np[:, i.wfn.nalpha():], S_Pmn_mo_a[:, :i.wfn.nalpha(), i.wfn.nalpha():],
+                                 epsilon_a/fouroverlap_a/(2*np.sqrt(2/np.pi)), optimize=True)
+                C_b += np.einsum('ai,bj,Cij,ij -> Cab', i.wfn.Cb().np[:, :i.wfn.nbeta()], i.wfn.Cb().np[:, i.wfn.nbeta():], S_Pmn_mo_b[:, :i.wfn.nbeta(), i.wfn.nbeta():],
+                                 epsilon_b/fouroverlap_b/(2*np.sqrt(2/np.pi)), optimize=True)
+
+            # vp(r) = C_{Cab}(CD)^{-1}(Dmn)dD_(mn)\phi_a(r)\phi_b(r) = dvp_a/b_r_{ab}\phi_a(r)\phi_b(r)
+            # Basically this is the coefficients of vp(r) on rhorho
+            delta_vp_a = np.einsum('Cab,CD,Dmn,mn -> ab', C_a, S_PQinv, S_Pmn_ao, self.molecule.Da.np - total_density_a, optimize=True)
+            delta_vp_b = np.einsum('Cab,CD,Dmn,mn -> ab', C_b, S_PQinv, S_Pmn_ao, self.molecule.Da.np - total_density_b, optimize=True)
+
+            delta_vp_a = 0.5*(delta_vp_a.T + delta_vp_a)
+            delta_vp_b = 0.5*(delta_vp_b.T + delta_vp_b)
+
+            delta_vp_a = np.einsum('ijmn,mn->ij', fouroverlap, delta_vp_a)
+            delta_vp_ = np.einsum('ijmn,mn->ij', fouroverlap, delta_vp_b)
+
+            delta_vp_a = psi4.core.Matrix.from_array(delta_vp_a)
+            delta_vp_b = psi4.core.Matrix.from_array(delta_vp_b)
+
+            vp_a.axpy(1.0, delta_vp_a)
+            vp_b.axpy(1.0, delta_vp_b)
+            vp_total.axpy(1.0, vp_a)
+            vp_total.axpy(1.0, vp_b)
+        return vp_a, vp_b, vp_total
+
     def find_vp(self, beta, guess=None, maxiter=10, atol=2e-4):
         """
         Given a target function, finds vp_matrix to be added to each fragment
@@ -688,7 +796,7 @@ class U_Embedding:
             Vp to be added to fragment ks matrix
 
         """
-        if guess==None:
+        if guess is None:
             vp_a = psi4.core.Matrix.from_array(np.zeros_like(self.molecule.Da.np))
             vp_b = psi4.core.Matrix.from_array(np.zeros_like(self.molecule.Db.np))
             vp_total = psi4.core.Matrix.from_array(np.zeros_like(self.molecule.Db.np))
@@ -721,22 +829,19 @@ class U_Embedding:
 
             print(F'Iteration: {scf_step} Delta_E = {total_energies - self.molecule.energy} Delta_D = {total_density_a.sum() + total_density_b.sum() - (self.molecule.Da.np.sum() + self.molecule.Db.np.sum())}')
 
-            delta_vp_a =  beta * (total_density_a - (self.molecule.Da.np))
-            delta_vp_b =  beta * (total_density_b - (self.molecule.Db.np))  
+            delta_vp_a = beta * (total_density_a - (self.molecule.Da.np))
+            delta_vp_b = beta * (total_density_b - (self.molecule.Db.np))
             #S, D_mnQ, S_pmn, Spq = fouroverlap(self.fragments[0].wfn, self.fragments[0].geometry, "STO-3G", self.fragments[0].mints)
             #S_2, d_2, S_pmn_2, Spq_2 = fouroverlap(self.fragments[1].wfn, self.fragments[1].geometry, "STO-3G")
-
             #delta_vp =  psi4.core.Matrix.from_array( np.einsum('ijmn,mn->ij', S, delta_vp))
             delta_vp_a = psi4.core.Matrix.from_array(delta_vp_a)
             delta_vp_b = psi4.core.Matrix.from_array(delta_vp_b)
-            
+
             vp_a.axpy(1.0, delta_vp_a)
             vp_b.axpy(1.0, delta_vp_b)
 
             vp_total.axpy(1.0, vp_a)
             vp_total.axpy(1.0, vp_b)
-
-            
 
         return vp_a, vp_b, vp_total
 
