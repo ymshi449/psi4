@@ -422,7 +422,19 @@ class Molecule():
 
 
 class U_Molecule():
-    def __init__(self, geometry, basis, method, mints=None, jk=None):
+    def __init__(self, geometry, basis, method, omega=[None, None], mints=None, jk=None):
+        """
+        :param geometry:
+        :param basis:
+        :param method:
+        :param omega: default as [None, None], means that integer number of occupation.
+                      The entire system should always been set as [None, None].
+                      For fragments, set as [omegaup, omegadown].
+                      omegaup = floor(nup) - nup; omegadown = floor(ndown) - ndown
+                      E[nup,ndown] = (1-omegaup-omegadowm)E[]
+        :param mints:
+        :param jk:
+        """
         #basics
         self.geometry   = geometry
         self.basis      = basis
@@ -448,7 +460,7 @@ class U_Molecule():
         self.A              = self.form_A()
         self.H              = self.form_H()
         self.Da, self.Db, self.energy, self.energies = self.scf()
-    
+
     def initialize(self):
         """
         Initializes functional and V potential objects
@@ -496,10 +508,43 @@ class U_Molecule():
         plot = qc.models.Molecule.from_data(self.geometry.save_string_xyz())
         return plot
 
+    def to_grid(self, Duv, Duv_b=None, vpot=None):
+        """
+        For any function on double ao basis: f(r) = Duv*phi_u(r)*phi_v(r), e.g. the density.
+        If Duv_b is not None, it will take Duv + Duv_b.
+        One should use the same wfn for all the fragments and the entire systems since different geometry will
+        give different arrangement of xyzw.
+        :return: The value of f(r) on grid points.
+        """
+        if vpot is None:
+            wfn = self.e_wfn
+            vpot = wfn.V_potential()
+        points_func = vpot.properties()[0]
+        f_grid = np.array([])
+        # Loop over the blocks
+        for b in range(vpot.nblocks()):
+            # Obtain block information
+            block = vpot.get_block(b)
+            points_func.compute_points(block)
+            npoints = block.npoints()
+            lpos = np.array(block.functions_local_to_global())
+
+            # Compute phi!
+            phi = np.array(points_func.basis_values()["PHI"])[:npoints, :lpos.shape[0]]
+
+            # Build a local slice of D
+            if Duv_b is None:
+                lD = Duv[(lpos[:, None], lpos)]
+            else:
+                lD = Duv[(lpos[:, None], lpos)] + Duv_b[(lpos[:, None], lpos)]
+
+            # Copmute rho
+            f_grid = np.append(f_grid, np.einsum('pm,mn,pn->p', phi, lD, phi))
+        return f_grid
+
     def scf(self, maxiter=30, vp_add=False, vp_matrix=None, print_energies=False):
         """
         Performs scf calculation to find energy and density
-
         Parameters
         ----------
         vp: Bool
@@ -510,7 +555,6 @@ class U_Molecule():
 
         Returns
         -------
-
         """
         if vp_add == False:
             vp_a = psi4.core.Matrix(self.nbf,self.nbf)
@@ -715,7 +759,6 @@ class U_Embedding:
 
                 total_density_a += density_a.np
                 total_density_b += density_b.np
-
                 total_energies += energy
 
             # if np.isclose( total_densities.sum(),self.molecule.D.sum(), atol=1e-5) :
@@ -727,6 +770,7 @@ class U_Embedding:
 
             print(
                 F'Iteration: {scf_step} Delta_E = {total_energies - self.molecule.energy} Delta_D = {total_density_a.sum() + total_density_b.sum() - (self.molecule.Da.np.sum() + self.molecule.Db.np.sum())}')
+
             """
             For each fragment, v_p(r) = \sum_{alpha}C_{ij}dD_{mn}\phi_i(r)\phi_j(r)(ijmn) = C_{ij}dD_{mn}\phi_i(r)\phi_j(r)(Cij)(CD)^{-1}(Dmn)
             v_{p,uv} = \sum_{alpha}C_{ij}dD_{mn}(Aij)(AB)^{-1}(Buv)(Cij)(CD)^{-1}(Dmn)
@@ -754,7 +798,8 @@ class U_Embedding:
                 # Normalization
                 fouroverlap_a = np.einsum('mij,nij,mn->ij', S_Pmn_mo_a[:, :i.wfn.nalpha(), i.wfn.nalpha():], S_Pmn_mo_a[:, :i.wfn.nalpha(), i.wfn.nalpha():], S_PQinv, optimize=True)
                 fouroverlap_b = np.einsum('mij,nij,mn->ij', S_Pmn_mo_b[:, :i.wfn.nbeta(), i.wfn.nbeta():], S_Pmn_mo_b[:, :i.wfn.nbeta(), i.wfn.nbeta():], S_PQinv, optimize=True)
-
+                fouroverlap_a += 1e-7
+                fouroverlap_b += 1e-7
                 C_a += np.einsum('ai,bj,Cij,ij -> Cab', i.wfn.Ca().np[:, :i.wfn.nalpha()], i.wfn.Ca().np[:, i.wfn.nalpha():], S_Pmn_mo_a[:, :i.wfn.nalpha(), i.wfn.nalpha():],
                                  epsilon_a/fouroverlap_a/(2*np.sqrt(2/np.pi)), optimize=True)
                 C_b += np.einsum('ai,bj,Cij,ij -> Cab', i.wfn.Cb().np[:, :i.wfn.nbeta()], i.wfn.Cb().np[:, i.wfn.nbeta():], S_Pmn_mo_b[:, :i.wfn.nbeta(), i.wfn.nbeta():],
@@ -762,14 +807,19 @@ class U_Embedding:
 
             # vp(r) = C_{Cab}(CD)^{-1}(Dmn)dD_(mn)\phi_a(r)\phi_b(r) = dvp_a/b_r_{ab}\phi_a(r)\phi_b(r)
             # Basically this is the coefficients of vp(r) on rhorho
-            delta_vp_a = np.einsum('Cab,CD,Dmn,mn -> ab', C_a, S_PQinv, S_Pmn_ao, self.molecule.Da.np - total_density_a, optimize=True)
-            delta_vp_b = np.einsum('Cab,CD,Dmn,mn -> ab', C_b, S_PQinv, S_Pmn_ao, self.molecule.Da.np - total_density_b, optimize=True)
+            DaDiff = np.copy(self.molecule.Da.np - total_density_a)
+            DbDiff = np.copy(self.molecule.Da.np - total_density_b)
+            DaDiff[np.abs(DaDiff)<1e-10] = 0
+            DbDiff[np.abs(DbDiff)<1e-10] = 0
+            # vp(r) = C_{Cab}(CD)^{-1}(Dmn)dD_(mn)\phi_a(r)\phi_b(r) = dvp_a/b_r_{ab}\phi_a(r)\phi_b(r)
+            delta_vp_a = np.einsum('Cab,CD,Dmn,mn -> ab', C_a, S_PQinv, S_Pmn_ao, -DaDiff, optimize=True)
+            delta_vp_b = np.einsum('Cab,CD,Dmn,mn -> ab', C_b, S_PQinv, S_Pmn_ao, -DbDiff, optimize=True)
 
             delta_vp_a = 0.5*(delta_vp_a.T + delta_vp_a)
             delta_vp_b = 0.5*(delta_vp_b.T + delta_vp_b)
 
             delta_vp_a = np.einsum('ijmn,mn->ij', fouroverlap, delta_vp_a)
-            delta_vp_ = np.einsum('ijmn,mn->ij', fouroverlap, delta_vp_b)
+            delta_vp_b = np.einsum('ijmn,mn->ij', fouroverlap, delta_vp_b)
 
             delta_vp_a = psi4.core.Matrix.from_array(delta_vp_a)
             delta_vp_b = psi4.core.Matrix.from_array(delta_vp_b)
@@ -778,6 +828,7 @@ class U_Embedding:
             vp_b.axpy(1.0, delta_vp_b)
             vp_total.axpy(1.0, vp_a)
             vp_total.axpy(1.0, vp_b)
+
         return vp_a, vp_b, vp_total
 
     def find_vp(self, beta, guess=None, maxiter=10, atol=2e-4):
