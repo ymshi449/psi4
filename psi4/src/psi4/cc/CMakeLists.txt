@@ -8,6 +8,7 @@ list(APPEND _Clang_debug_flags
   "-Wextra"
   "-Winit-self"
   "-Woverloaded-virtual"
+  "-Wunused"
   "-Wuninitialized"
   "-Wmissing-declarations"
   "-Wwrite-strings"
@@ -17,6 +18,10 @@ list(APPEND _Clang_debug_flags
   "-m64"
   "-Qunused-arguments"
   "-fcolor-diagnostics"
+  )
+target_sources(cc
+  PRIVATE
+  amps.cc
   )
 target_compile_options(cc
   PRIVATE
@@ -35,3 +40,5 @@ list(APPEND _ccmodules
 foreach(dir_name IN LISTS _ccmodules)
   add_subdirectory(${dir_name})
 endforeach ()
+
+set_property(GLOBAL APPEND PROPERTY BINLIST cc)

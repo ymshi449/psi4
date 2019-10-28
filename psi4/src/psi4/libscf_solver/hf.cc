@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -87,8 +87,8 @@ HF::~HF() {}
 
 void HF::common_init() {
     attempt_number_ = 1;
-    ref_C_ = false;
     reset_occ_ = false;
+    sad_ = false;
 
     // This quantity is needed fairly soon
     nirrep_ = factory_->nirrep();
@@ -115,13 +115,13 @@ void HF::common_init() {
     energies_["Total Energy"] = 0.0;
 
     // Read in DOCC and SOCC from memory
-    int nirreps = factory_->nirrep();
     input_docc_ = false;
     if (options_["DOCC"].has_changed()) {
         input_docc_ = true;
         // Map the symmetry of the input DOCC, to account for displacements
-        std::shared_ptr<PointGroup> old_pg = Process::environment.parent_symmetry();
-        if (old_pg) {
+        auto ps = options_.get_str("PARENT_SYMMETRY");
+        if (ps != "") {
+            auto old_pg = std::make_shared<PointGroup>(ps);
             // This is one of a series of displacements;  check the dimension against the parent
             // point group
             size_t full_nirreps = old_pg->char_table().nirrep();
@@ -135,8 +135,8 @@ void HF::common_init() {
         } else {
             // This is a normal calculation; check the dimension against the current point group
             // then read
-            if (options_["DOCC"].size() != nirreps) throw PSIEXCEPTION("Input DOCC array has the wrong dimensions");
-            for (int h = 0; h < nirreps; ++h) {
+            if (options_["DOCC"].size() != nirrep_) throw PSIEXCEPTION("Input DOCC array has the wrong dimensions");
+            for (int h = 0; h < nirrep_; ++h) {
                 doccpi_[h] = options_["DOCC"][h].to_integer();
             }
         }
@@ -146,8 +146,9 @@ void HF::common_init() {
     if (options_["SOCC"].has_changed()) {
         input_socc_ = true;
         // Map the symmetry of the input SOCC, to account for displacements
-        std::shared_ptr<PointGroup> old_pg = Process::environment.parent_symmetry();
-        if (old_pg) {
+        auto ps = options_.get_str("PARENT_SYMMETRY");
+        if (ps != "") {
+            auto old_pg = std::make_shared<PointGroup>(ps);
             // This is one of a series of displacements;  check the dimension against the parent
             // point group
             size_t full_nirreps = old_pg->char_table().nirrep();
@@ -161,24 +162,40 @@ void HF::common_init() {
         } else {
             // This is a normal calculation; check the dimension against the current point group
             // then read
-            if (options_["SOCC"].size() != nirreps) throw PSIEXCEPTION("Input SOCC array has the wrong dimensions");
-            for (int h = 0; h < nirreps; ++h) {
+            if (options_["SOCC"].size() != nirrep_) throw PSIEXCEPTION("Input SOCC array has the wrong dimensions");
+            for (int h = 0; h < nirrep_; ++h) {
                 soccpi_[h] = options_["SOCC"][h].to_integer();
             }
         }
     }  // else take the reference wavefunctions soccpi
 
     // Check that we have enough basis functions
-    for (int h = 0; h < nirreps; ++h) {
+    for (int h = 0; h < nirrep_; ++h) {
         if (doccpi_[h] + soccpi_[h] > nmopi_[h]) {
             throw PSIEXCEPTION("Not enough basis functions to satisfy requested occupancies");
         }
     }
 
     if (input_socc_ || input_docc_) {
+        int alphacount = 0;
+        int betacount = 0;
         for (int h = 0; h < nirrep_; h++) {
             nalphapi_[h] = doccpi_[h] + soccpi_[h];
             nbetapi_[h] = doccpi_[h];
+            alphacount += nalphapi_[h];
+            betacount += nbetapi_[h];
+        }
+        if (alphacount != nalpha_) {
+            std::ostringstream oss;
+            oss << "Got " << alphacount << " alpha electrons, expected " << nalpha_ << ".\n";
+            oss << "DOCC and SOCC must specify the occupation of all electrons or none.";
+            throw PSIEXCEPTION(oss.str());
+        }
+        if (betacount != nbeta_) {
+            std::ostringstream oss;
+            oss << "Got " << betacount << " beta electrons, expected " << nbeta_ << ".\n";
+            oss << "DOCC and SOCC must specify the occupation of all electrons or none.";
+            throw PSIEXCEPTION(oss.str());
         }
     }
 
@@ -255,8 +272,6 @@ void HF::common_init() {
     } else {
         potential_ = nullptr;
     }
-
-
 
     // -D is zero by default
     set_scalar_variable("-D Energy", 0.0);
@@ -337,51 +352,26 @@ void HF::rotate_orbitals(SharedMatrix C, const SharedMatrix x) {
     U->expm(4, true);
 
     // Need to build a new one here incase nmo != nso
-    SharedMatrix tmp = Matrix::doublet(C, U, false, false);
+    SharedMatrix tmp = linalg::doublet(C, U, false, false);
     C->copy(tmp);
 
     U.reset();
     tmp.reset();
 }
-void HF::initialize_jk(size_t effective_memory_doubles) {
-    if (print_) outfile->Printf("  ==> Integral Setup <==\n\n");
-
+void HF::initialize_gtfock_jk() {
     // Build the JK from options, symmetric type
-    if (options_.get_str("SCF_TYPE") == "GTFOCK") {
 #ifdef HAVE_JK_FACTORY
-        // DGAS is adding to the ghetto, this Python -> C++ -> C -> C++ -> back to C is FUBAR
-        std::shared_ptr<Molecule> other_legacy = Process::environment.legacy_molecule();
-        Process::environment.set_legacy_molecule(molecule_);
-        if (options_.get_bool("SOSCF"))
-            jk_ = std::make_shared<GTFockJK>(basisset_, 2, false);
-        else
-            jk_ = std::make_shared<GTFockJK>(basisset_, 2, true);
-        Process::environment.set_legacy_molecule(other_legacy);
+    // DGAS is adding to the ghetto, this Python -> C++ -> C -> C++ -> back to C is FUBAR
+    std::shared_ptr<Molecule> other_legacy = Process::environment.legacy_molecule();
+    Process::environment.set_legacy_molecule(molecule_);
+    if (options_.get_bool("SOSCF"))
+        jk_ = std::make_shared<GTFockJK>(basisset_, 2, false);
+    else
+        jk_ = std::make_shared<GTFockJK>(basisset_, 2, true);
+    Process::environment.set_legacy_molecule(other_legacy);
 #else
-        throw PSIEXCEPTION("GTFock was not compiled in this version.\n");
+    throw PSIEXCEPTION("GTFock was not compiled in this version.\n");
 #endif
-    } else {
-        jk_ = JK::build_JK(get_basisset("ORBITAL"), get_basisset("DF_BASIS_SCF"), options_, functional_->is_x_lrc(),
-                           effective_memory_doubles);
-    }
-
-    // Tell the JK to print
-    jk_->set_print(print_);
-    // Give the JK 75% of the memory
-    jk_->set_memory(effective_memory_doubles);
-
-    // DFT sometimes needs custom stuff
-    // K matrices
-    jk_->set_do_K(functional_->is_x_hybrid());
-    // wK matrices
-    jk_->set_do_wK(functional_->is_x_lrc());
-    // w Value
-    jk_->set_omega(functional_->x_omega());
-
-    // Initialize
-    jk_->initialize();
-    // Print the header
-    jk_->print_header();
 }
 
 void HF::finalize() {
@@ -504,8 +494,8 @@ void HF::print_header() {
     outfile->Printf("\n");
     outfile->Printf("         ---------------------------------------------------------\n");
     outfile->Printf("                                   SCF\n");
-    outfile->Printf("            by Justin Turney, Rob Parrish, Andy Simmonett\n");
-    outfile->Printf("                             and Daniel Smith\n");
+    outfile->Printf("               by Justin Turney, Rob Parrish, Andy Simmonett\n");
+    outfile->Printf("                          and Daniel G. A. Smith\n");
     outfile->Printf("                             %4s Reference\n", options_.get_str("REFERENCE").c_str());
     outfile->Printf("                      %3d Threads, %6ld MiB Core\n", nthread, memory_ / 1048576L);
     outfile->Printf("         ---------------------------------------------------------\n");
@@ -541,21 +531,6 @@ void HF::print_header() {
     outfile->Printf("  ==> Primary Basis <==\n\n");
 
     basisset_->print_by_level("outfile", print_);
-}
-
-void HF::print_preiterations() {
-    CharacterTable ct = molecule_->point_group()->char_table();
-
-    outfile->Printf("   -------------------------------------------------------\n");
-    outfile->Printf("    Irrep   Nso     Nmo     Nalpha   Nbeta   Ndocc  Nsocc\n");
-    outfile->Printf("   -------------------------------------------------------\n");
-    for (int h = 0; h < nirrep_; h++) {
-        outfile->Printf("     %-3s   %6d  %6d  %6d  %6d  %6d  %6d\n", ct.gamma(h).symbol(), nsopi_[h], nmopi_[h],
-                        nalphapi_[h], nbetapi_[h], doccpi_[h], soccpi_[h]);
-    }
-    outfile->Printf("   -------------------------------------------------------\n");
-    outfile->Printf("    Total  %6d  %6d  %6d  %6d  %6d  %6d\n", nso_, nmo_, nalpha_, nbeta_, nbeta_, nalpha_ - nbeta_);
-    outfile->Printf("   -------------------------------------------------------\n\n");
 }
 
 void HF::form_H() {
@@ -739,18 +714,25 @@ void HF::form_Shalf() {
 
     // Convert the eigenvales to 1/sqrt(eigenvalues)
     const Dimension& dimpi = eigval->dimpi();
-    double min_S = std::fabs(eigval->get(0, 0));
+    // Cannot assume that (0,0) is a valid reference
+    bool min_S_initialized = false;
+    double min_S;
     for (int h = 0; h < nirrep_; ++h) {
         for (int i = 0; i < dimpi[h]; ++i) {
-            if (min_S > eigval->get(h, i)) min_S = eigval->get(h, i);
-            double scale = 1.0 / sqrt(eigval->get(h, i));
+            if (!min_S_initialized) {
+                min_S = eigval->get(h, i);
+                min_S_initialized = true;
+            } else if (min_S > eigval->get(h, i)) {
+                min_S = eigval->get(h, i);
+            }
+            double scale = 1.0 / std::sqrt(eigval->get(h, i));
             eigval->set(h, i, scale);
         }
     }
     if (print_) outfile->Printf("  Minimum eigenvalue in the overlap matrix is %14.10E.\n", min_S);
+
     // Create a vector matrix from the converted eigenvalues
     eigtemp2->set_diagonal(eigval);
-
     eigtemp->gemm(false, true, 1.0, eigtemp2, eigvec, 0.0);
     X_->gemm(false, false, 1.0, eigvec, eigtemp, 0.0);
 
@@ -773,7 +755,7 @@ void HF::form_Shalf() {
             int start_index = 0;
             for (int i = 0; i < dimpi[h]; ++i) {
                 if (S_cutoff < eigval->get(h, i)) {
-                    double scale = 1.0 / sqrt(eigval->get(h, i));
+                    double scale = 1.0 / std::sqrt(eigval->get(h, i));
                     eigvec->scale_column(h, i, scale);
                 } else {
                     start_index++;
@@ -793,8 +775,7 @@ void HF::form_Shalf() {
             // descending order
             int start_index = 0;
             for (int i = 0; i < dimpi[h]; ++i) {
-                if (S_cutoff < eigval->get(h, i)) {
-                } else {
+                if (S_cutoff >= eigval->get(h, i)) {
                     start_index++;
                 }
             }
@@ -1012,17 +993,11 @@ void HF::guess() {
 
     // What does the user want?
     // Options will be:
-    // ref_C_-C matrices were detected in the incoming wavefunction
     // "CORE"-CORE Hamiltonain
     // "GWH"-Generalized Wolfsberg-Helmholtz
-    // "SAD"-Superposition of Atomic Denisties
+    // "SAD"-Superposition of Atomic Densities
     std::string guess_type = options_.get_str("GUESS");
 
-    // DGAS broke SAD
-    // if (guess_type == "SAD"){
-    //     outfile->Printf("\nWarning! SAD is temporarily broken, switching to CORE!\n\n");
-    //     guess_type = "CORE";
-    // }
     // Take care of options that should be overridden
     if (guess_type == "AUTO") {
         outfile->Printf("\nWarning! Guess was AUTO, switching to CORE!\n\n");
@@ -1089,17 +1064,68 @@ void HF::guess() {
         format_guess();
         form_D();
 
-        // This is a guess iteration similar to SAD
+        // This is a guess iteration: orbital occupations may be reset in SCF
         iteration_ = -1;
         guess_E = compute_initial_E();
 
     } else if (guess_type == "SAD") {
         if (print_) outfile->Printf("  SCF Guess: Superposition of Atomic Densities via on-the-fly atomic UHF.\n\n");
 
-        // Superposition of Atomic Density
+        // Superposition of Atomic Density. Modified by Susi Lehtola
+        // 2018-12-15 to work also for ROHF, as well as to allow using
+        // SAD with predefined orbital occupations. The algorithm is
+        // the same as in van Lenthe et al, "Starting SCF Calculations
+        // by Superposition of Atomic Densities", J Comput Chem 27,
+        // 926 (2006).
+
+        // Build non-idempotent, spin-restricted SAD density matrix
+        compute_SAD_guess(false);
+
+        // This is a guess iteration: orbital occupations must be
+        // reset in SCF.
         iteration_ = -1;
-        reset_occ_ = true;
-        compute_SAD_guess();
+        // SAD doesn't yield orbitals so also the SCF logic is
+        // slightly different for the first iteration.
+        sad_ = true;
+        guess_E = compute_initial_E();
+
+    } else if (guess_type == "SADNO") {
+        if (print_)
+            outfile->Printf(
+                "  SCF Guess: Superposition of Atomic Densities' Natural Orbitals via on-the-fly atomic UHF "
+                "(doi:10.1021/acs.jctc.8b01089).\n\n");
+
+        // Like the above, but builds natural orbitals from the SAD
+        // density matrix.
+
+        // Build non-idempotent, spin-restricted SAD density matrix
+        compute_SAD_guess(true);
+        // Find occupations
+        find_occupation();
+
+        // Now we have orbitals and occupations, build a density matrix
+        form_D();
+        guess_E = compute_initial_E();
+
+    } else if (guess_type == "HUCKEL") {
+        if (print_)
+            outfile->Printf("  SCF Guess: Huckel guess via on-the-fly atomic UHF (doi:10.1021/acs.jctc.8b01089).\n\n");
+
+        // Huckel guess, written by Susi Lehtola 2019-01-27.  See "An
+        // assessment of initial guesses for self-consistent field
+        // calculations. Superposition of Atomic Potentials: simple
+        // yet efficient", JCTC 2019, doi: 10.1021/acs.jctc.8b01089.
+
+        if (!options_.get_bool("SAD_SPIN_AVERAGE")) {
+            throw PSIEXCEPTION("  Huckel guess requires SAD_SPIN_AVERAGE = True!");
+        }
+        if (!options_.get_bool("SAD_FRAC_OCC")) {
+            throw PSIEXCEPTION("  Huckel guess requires SAD_FRAC_OCC = True!");
+        }
+        compute_huckel_guess();
+
+        form_initial_C();
+        form_D();
         guess_E = compute_initial_E();
 
     } else if (guess_type == "GWH") {
@@ -1121,7 +1147,6 @@ void HF::guess() {
         }
         Fb_->copy(Fa_);
         form_initial_C();
-        find_occupation();
         form_D();
         guess_E = compute_initial_E();
 
@@ -1132,9 +1157,34 @@ void HF::guess() {
         Fb_->copy(H_);
 
         form_initial_C();
-        find_occupation();
         form_D();
         guess_E = compute_initial_E();
+
+    } else if (guess_type == "SAP") {
+        // SAP guess
+        if (print_)
+            outfile->Printf("  SCF Guess: Superposition of Atomic Potentials (doi:10.1021/acs.jctc.8b01089).\n\n");
+
+        std::shared_ptr<psi::VBase> builder = VBase::build_V(basisset_, functional_, options_, "SAP");
+        builder->initialize();
+
+        // Print info on the integration grid
+        if (print_) {
+            builder->print_header();
+        }
+
+        // Build the SAP potential
+        std::vector<SharedMatrix> Vsap;
+        Vsap.push_back(SharedMatrix(factory_->create_matrix("Vsap")));
+        builder->compute_V(Vsap);
+
+        Fa_->copy(T_);
+        Fa_->add(Vsap[0]);
+        Fb_->copy(Fa_);
+        form_initial_C();
+        form_D();
+        guess_E = compute_initial_E();
+
     } else {
         throw PSIEXCEPTION("  SCF Guess: No guess was found!");
     }

@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -134,7 +134,7 @@ void similar(unsigned char bits, unsigned char* sim, char& cnt);
 /** The SymmetryOperation class provides a 3 by 3 matrix
     representation of a symmetry operation, such as a rotation or reflection.
 */
-class SymmetryOperation {
+class PSI_API SymmetryOperation {
    private:
     // Some necessary Python imports become nightmarish if you try double[3][3]
     // While a std::array<double, 9> would be simpler, it hurts code readability...
@@ -260,7 +260,7 @@ class SymmetryOperation {
     SymRep can be used as the character for that symmetry operation.  d is
     hardwired to 5x5 since the H irrep in Ih is 5 dimensional.
 */
-class SymRep {
+class PSI_API SymRep {
    private:
     int n;
     double d[5][5];
@@ -357,7 +357,7 @@ class PSI_API CharacterTable;
     translations and rotations in the irrep.  The order of the point group
     is also provided (this is equal to the number of characters in an
     irrep).  */
-class IrreducibleRepresentation {
+class PSI_API IrreducibleRepresentation {
     friend class CharacterTable;
 
    private:
@@ -442,7 +442,7 @@ class IrreducibleRepresentation {
  distinct C3 rotations and 3 distinct reflections, each with a separate
  character.  Thus symop has 6 elements rather than the 3 you'll find in
  most published character tables. */
-class CharacterTable {
+class PSI_API CharacterTable {
     int nt;                             ///< order of the princ rot axis
     PointGroups::Groups pg;             ///< the class of the point group
     int nirrep_;                        ///< the number of irreps in this pg
@@ -603,6 +603,8 @@ class PSI_API PointGroup {
 
     /// Returns the CharacterTable for this point group.
     CharacterTable char_table() const;
+    /// Returns the full name of this point group
+    const char* full_name() const { return bits_to_full_name(bits_); }
     /// Returns the order of this point group
     int order() const { return char_table().order(); }
     /// Returns the Schoenflies symbol for this point group.

@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -71,9 +71,9 @@ void SAPT2p3::disp30() {
 }
 
 double SAPT2p3::disp30_1(int ampfile, const char *amplabel, int AAintfile, const char *RRlabel, int BBintfile,
-                         const char *SSlabel, int foccA, int noccA, int nvirA, int foccB, int noccB, int nvirB) {
-    int aoccA = noccA - foccA;
-    int aoccB = noccB - foccB;
+                         const char *SSlabel, size_t foccA, size_t noccA, size_t nvirA, size_t foccB, size_t noccB, size_t nvirB) {
+    size_t aoccA = noccA - foccA;
+    size_t aoccB = noccB - foccB;
 
     double **tARBS = block_matrix(aoccA_ * nvirA_, aoccB_ * nvirB_);
     psio_->read_entry(PSIF_SAPT_AMPS, "tARBS Amplitudes", (char *)tARBS[0],
@@ -152,10 +152,10 @@ double SAPT2p3::disp30_1(int ampfile, const char *amplabel, int AAintfile, const
 }
 
 double SAPT2p3::disp30_2(int ampfile, const char *amplabel, int AAintfile, const char *AAlabel, const char *RRlabel,
-                         int BBintfile, const char *BBlabel, const char *SSlabel, int foccA, int noccA, int nvirA,
-                         int foccB, int noccB, int nvirB) {
-    int aoccA = noccA - foccA;
-    int aoccB = noccB - foccB;
+                         int BBintfile, const char *BBlabel, const char *SSlabel, size_t foccA, size_t noccA, size_t nvirA,
+                         size_t foccB, size_t noccB, size_t nvirB) {
+    size_t aoccA = noccA - foccA;
+    size_t aoccB = noccB - foccB;
 
     double **tARBS = block_matrix(aoccA_ * nvirA_, aoccB_ * nvirB_);
     psio_->read_entry(PSIF_SAPT_AMPS, "tARBS Amplitudes", (char *)tARBS[0],

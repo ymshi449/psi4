@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -33,7 +33,7 @@ namespace psi {
 
 class Vector;
 
-class IntegralParameters {
+class PSI_API IntegralParameters {
    private:
     size_t nparam_;
 
@@ -44,7 +44,7 @@ class IntegralParameters {
     size_t nparam() const { return nparam_; }
 };
 
-class CorrelationFactor : public IntegralParameters {
+class PSI_API CorrelationFactor : public IntegralParameters {
    private:
     double *coeff_;
     double *exponent_;
@@ -60,7 +60,7 @@ class CorrelationFactor : public IntegralParameters {
     double *coeff() const { return coeff_; }
 };
 
-class FittedSlaterCorrelationFactor : public CorrelationFactor {
+class PSI_API FittedSlaterCorrelationFactor : public CorrelationFactor {
    private:
     double slater_exponent_;
 

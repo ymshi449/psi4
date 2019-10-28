@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -80,6 +80,43 @@ inline std::vector<double> rks_quadrature_integrate(std::shared_ptr<BlockOPoints
     ret[4] = C_DDOT(npoints, QTp, 1, z, 1);
 
     return ret;
+}
+
+inline void sap_integrator(std::shared_ptr<BlockOPoints> block, const std::vector<double>& sap_potential,
+                           std::shared_ptr<PointFunctions> pworker, SharedMatrix V) {
+    // Block data
+    const std::vector<int>& function_map = block->functions_local_to_global();
+    int nlocal = function_map.size();
+    int npoints = block->npoints();
+    double* w = block->w();
+
+    // Scratch is updated
+    double** Tp = pworker->scratch()[0]->pointer();
+
+    // Points data
+    double** phi = pworker->basis_value("PHI")->pointer();
+    size_t coll_funcs = pworker->basis_value("PHI")->ncol();
+
+    // V2 Temporary
+    int max_functions = V->ncol();
+    double** V2p = V->pointer();
+
+    // => LSDA contribution (symmetrized) <= //
+    for (int P = 0; P < npoints; P++) {
+        std::fill(Tp[P], Tp[P] + nlocal, 0.0);
+        C_DAXPY(nlocal, 0.5 * sap_potential[P] * w[P], phi[P], 1, Tp[P], 1);
+    }
+    // parallel_timer_off("LSDA Phi_tmp", rank);
+
+    // Collect V terms
+    C_DGEMM('T', 'N', nlocal, nlocal, npoints, 1.0, phi[0], coll_funcs, Tp[0], max_functions, 0.0, V2p[0],
+            max_functions);
+
+    for (int m = 0; m < nlocal; m++) {
+        for (int n = 0; n <= m; n++) {
+            V2p[m][n] = V2p[n][m] = V2p[m][n] + V2p[n][m];
+        }
+    }
 }
 
 inline void rks_integrator(std::shared_ptr<BlockOPoints> block, std::shared_ptr<SuperFunctional> fworker,
@@ -326,6 +363,6 @@ inline void rks_gradient_integrator(std::shared_ptr<BasisSet> primary, std::shar
     }
 }
 
-}  // End dft_integrator namespace
-}  // End psi namespace
+}  // namespace dft_integrators
+}  // namespace psi
 #endif

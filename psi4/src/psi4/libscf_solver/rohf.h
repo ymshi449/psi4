@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -52,7 +52,7 @@ class ROHF : public HF {
     SharedMatrix moFa_;
     SharedMatrix moFb_;
 
-    void form_initialF();
+    void form_initial_F() override;
     void form_initial_C() override;
     double compute_initial_E() override;
     void prepare_canonical_orthogonalization() override;
@@ -85,6 +85,8 @@ class ROHF : public HF {
     void form_G() override;
     double compute_E() override;
     void finalize() override;
+
+    void compute_SAD_guess(bool natorb) override;
 
     void damping_update(double) override;
     int soscf_update(double soscf_conv, int soscf_min_iter, int soscf_max_iter, int soscf_print) override;

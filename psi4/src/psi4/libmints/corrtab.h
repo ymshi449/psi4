@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -70,7 +70,7 @@ namespace psi {
 /** The CorrelationTable class provides a correlation
     table between two point groups.
 */
-class CorrelationTable {
+class PSI_API CorrelationTable {
    private:
     std::shared_ptr<PointGroup> group_;
     std::shared_ptr<PointGroup> subgroup_;

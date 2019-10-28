@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -80,7 +80,8 @@ UHF::UHF(SharedWavefunction ref_wfn, std::shared_ptr<SuperFunctional> func, Opti
 UHF::~UHF() {}
 
 void UHF::common_init() {
-    Drms_ = 0.0;
+    name_ = "UHF";
+
     // TODO: Move that to the base object
     step_scale_ = options_.get_double("FOLLOW_STEP_SCALE");
     step_increment_ = options_.get_double("FOLLOW_STEP_INCREMENT");
@@ -221,18 +222,6 @@ void UHF::form_G() {
     } else {
         wKa_->zero();
         wKb_->zero();
-    }
-}
-
-void UHF::form_initialF() {
-    Fa_->copy(H_);
-    Fb_->copy(H_);
-
-    if (debug_) {
-        outfile->Printf("Initial Fock alpha matrix:\n");
-        Fa_->print("outfile");
-        outfile->Printf("Initial Fock beta matrix:\n");
-        Fb_->print("outfile");
     }
 }
 
@@ -391,19 +380,19 @@ std::vector<SharedMatrix> UHF::onel_Hx(std::vector<SharedMatrix> x_vec) {
         }
 
         // Alpha
-        SharedMatrix tmp1 = Matrix::triplet(Ca_occ, Fa_, Ca_occ, true, false, false);
-        SharedMatrix result = Matrix::doublet(tmp1, x_vec[2 * i], false, false);
+        SharedMatrix tmp1 = linalg::triplet(Ca_occ, Fa_, Ca_occ, true, false, false);
+        SharedMatrix result = linalg::doublet(tmp1, x_vec[2 * i], false, false);
 
-        SharedMatrix tmp2 = Matrix::triplet(x_vec[2 * i], Ca_vir, Fa_, false, true, false);
+        SharedMatrix tmp2 = linalg::triplet(x_vec[2 * i], Ca_vir, Fa_, false, true, false);
         result->gemm(false, false, -1.0, tmp2, Ca_vir, 1.0);
 
         ret.push_back(result);
 
         // Beta
-        tmp1 = Matrix::triplet(Cb_occ, Fb_, Cb_occ, true, false, false);
-        result = Matrix::doublet(tmp1, x_vec[2 * i + 1], false, false);
+        tmp1 = linalg::triplet(Cb_occ, Fb_, Cb_occ, true, false, false);
+        result = linalg::doublet(tmp1, x_vec[2 * i + 1], false, false);
 
-        tmp2 = Matrix::triplet(x_vec[2 * i + 1], Cb_vir, Fb_, false, true, false);
+        tmp2 = linalg::triplet(x_vec[2 * i + 1], Cb_vir, Fb_, false, true, false);
         result->gemm(false, false, -1.0, tmp2, Cb_vir, 1.0);
 
         ret.push_back(result);
@@ -439,7 +428,7 @@ std::vector<SharedMatrix> UHF::twoel_Hx(std::vector<SharedMatrix> x_vec, bool co
 
         Cl.push_back(Ca_occ);
 
-        SharedMatrix R = Matrix::doublet(Ca_vir, x_vec[2 * i], false, true);
+        SharedMatrix R = linalg::doublet(Ca_vir, x_vec[2 * i], false, true);
         R->scale(-1.0);
         Cr.push_back(R);
     }
@@ -449,7 +438,7 @@ std::vector<SharedMatrix> UHF::twoel_Hx(std::vector<SharedMatrix> x_vec, bool co
         }
         Cl.push_back(Cb_occ);
 
-        SharedMatrix R = Matrix::doublet(Cb_vir, x_vec[2 * i + 1], false, true);
+        SharedMatrix R = linalg::doublet(Cb_vir, x_vec[2 * i + 1], false, true);
         R->scale(-1.0);
         Cr.push_back(R);
     }
@@ -466,11 +455,12 @@ std::vector<SharedMatrix> UHF::twoel_Hx(std::vector<SharedMatrix> x_vec, bool co
         std::vector<SharedMatrix> Dx;
         // Gotta reorder the wizardry
         for (size_t i = 0; i < nvecs; i++) {
-            Dx.push_back(Matrix::doublet(Cl[i], Cr[i], false, true));
-            Vx.push_back(std::make_shared<Matrix>("Vax Temp", Dx[i]->rowspi(), Dx[i]->colspi()));
-
-            Dx.push_back(Matrix::doublet(Cl[nvecs + i], Cr[nvecs + i], false, true));
-            Vx.push_back(std::make_shared<Matrix>("Vbx Temp", Dx[nvecs + i]->rowspi(), Dx[nvecs + i]->colspi()));
+            auto Dx_a = linalg::doublet(Cl[i], Cr[i], false, true);
+            auto Dx_b = linalg::doublet(Cl[nvecs + i], Cr[nvecs + i], false, true);
+            Vx.push_back(std::make_shared<Matrix>("Vax temp", Dx_a->rowspi(), Dx_a->colspi(), Dx_a->symmetry()));
+            Vx.push_back(std::make_shared<Matrix>("Vbx temp", Dx_b->rowspi(), Dx_b->colspi(), Dx_b->symmetry()));
+            Dx.push_back(Dx_a);
+            Dx.push_back(Dx_b);
         }
         potential_->compute_Vx(Dx, Vx);
     }
@@ -510,21 +500,28 @@ std::vector<SharedMatrix> UHF::twoel_Hx(std::vector<SharedMatrix> x_vec, bool co
         }
     } else {
         for (size_t i = 0; i < nvecs; i++) {
+            J[i]->add(J[nvecs + i]);
+            J[nvecs + i]->copy(J[i]);
+            if (functional_->needs_xc()) {
+                J[i]->add(Vx[2 * i]);
+                J[nvecs + i]->add(Vx[2 * i + 1]);
+            }
             ret.push_back(J[i]);
             ret.push_back(J[nvecs + i]);
             if (functional_->is_x_hybrid()) {
                 K[i]->scale(alpha);
-                ret.push_back(K[i]);
-
                 K[nvecs + i]->scale(alpha);
-                ret.push_back(K[nvecs + i]);
                 if (functional_->is_x_lrc()) {
                     K[i]->axpy(beta, wK[i]);
                     K[nvecs + i]->axpy(beta, wK[nvecs + i]);
                 }
-            }
-            if (functional_->needs_xc()) {
-                ret.push_back(Vx[i]);
+                ret.push_back(K[i]);
+                ret.push_back(K[nvecs + i]);
+            } else if (functional_->is_x_lrc()) {
+                wK[i]->scale(beta);
+                wK[nvecs + i]->scale(beta);
+                ret.push_back(wK[i]);
+                ret.push_back(wK[nvecs + i]);
             }
         }
     }
@@ -534,8 +531,8 @@ std::vector<SharedMatrix> UHF::twoel_Hx(std::vector<SharedMatrix> x_vec, bool co
         /* pass */
     } else if (return_basis == "MO") {
         for (size_t i = 0; i < nvecs; i++) {
-            ret[2 * i] = Matrix::triplet(Ca_occ, ret[2 * i], Ca_vir, true, false, false);
-            ret[2 * i + 1] = Matrix::triplet(Cb_occ, ret[2 * i + 1], Cb_vir, true, false, false);
+            ret[2 * i] = linalg::triplet(Ca_occ, ret[2 * i], Ca_vir, true, false, false);
+            ret[2 * i + 1] = linalg::triplet(Cb_occ, ret[2 * i + 1], Cb_vir, true, false, false);
         }
     } else {
         throw PSIEXCEPTION("SCF::twoel_Hx: return_basis option not understood.");
@@ -572,8 +569,8 @@ std::vector<SharedMatrix> UHF::cphf_solve(std::vector<SharedMatrix> x_vec, doubl
     Dimension virpi_b = nmopi_ - nbetapi_;
 
     // MO Fock Matrix (Inactive Fock in Helgaker's language)
-    SharedMatrix IFock_a = Matrix::triplet(Ca_, Fa_, Ca_, true, false, false);
-    SharedMatrix IFock_b = Matrix::triplet(Cb_, Fb_, Cb_, true, false, false);
+    SharedMatrix IFock_a = linalg::triplet(Ca_, Fa_, Ca_, true, false, false);
+    SharedMatrix IFock_b = linalg::triplet(Cb_, Fb_, Cb_, true, false, false);
 
     auto Precon_a = std::make_shared<Matrix>("Alpha Precon", nirrep_, nalphapi_, virpi_a);
     auto Precon_b = std::make_shared<Matrix>("Beta Precon", nirrep_, nbetapi_, virpi_b);
@@ -654,7 +651,7 @@ std::vector<SharedMatrix> UHF::cphf_solve(std::vector<SharedMatrix> x_vec, doubl
         if (resid_denom[i] < 1.e-14) {
             resid_denom[i] = 1.e-14;  // Prevent rel denom from being too small
         }
-        rms[i] = sqrt(resid[i] / resid_denom[i]);
+        rms[i] = std::sqrt(resid[i] / resid_denom[i]);
         mean_rms += rms[i];
         if (rms[i] > max_rms) {
             max_rms = rms[i];
@@ -713,7 +710,7 @@ std::vector<SharedMatrix> UHF::cphf_solve(std::vector<SharedMatrix> x_vec, doubl
             double alpha = rzpre[i] / tmp_denom;
 
             if (std::isnan(alpha)) {
-                outfile->Printf("RHF::CPHF Warning CG alpha is zero/nan for vec %d. Stopping vec.\n", i);
+                outfile->Printf("RHF::CPHF Warning CG alpha is zero/nan for vec %lu. Stopping vec.\n", i);
                 active[i] = false;
                 alpha = 0.0;
             }
@@ -729,7 +726,7 @@ std::vector<SharedMatrix> UHF::cphf_solve(std::vector<SharedMatrix> x_vec, doubl
             resid[i] = r_vec[2 * i]->sum_of_squares();
             resid[i] += r_vec[2 * i + 1]->sum_of_squares();
 
-            rms[i] = sqrt(resid[i] / resid_denom[i]);
+            rms[i] = std::sqrt(resid[i] / resid_denom[i]);
             if (rms[i] > max_rms) {
                 max_rms = rms[i];
             }
@@ -806,11 +803,11 @@ int UHF::soscf_update(double soscf_conv, int soscf_min_iter, int soscf_max_iter,
     // Grab occ and vir orbitals
     SharedMatrix Cocc_a = Ca_subset("SO", "OCC");
     SharedMatrix Cvir_a = Ca_subset("SO", "VIR");
-    SharedMatrix Gradient_a = Matrix::triplet(Cocc_a, Fa_, Cvir_a, true, false, false);
+    SharedMatrix Gradient_a = linalg::triplet(Cocc_a, Fa_, Cvir_a, true, false, false);
 
     SharedMatrix Cocc_b = Cb_subset("SO", "OCC");
     SharedMatrix Cvir_b = Cb_subset("SO", "VIR");
-    SharedMatrix Gradient_b = Matrix::triplet(Cocc_b, Fb_, Cvir_b, true, false, false);
+    SharedMatrix Gradient_b = linalg::triplet(Cocc_b, Fb_, Cvir_b, true, false, false);
 
     // Make sure the MO gradient is reasonably small
     if ((Gradient_a->absmax() > 0.3) || (Gradient_b->absmax() > 0.3)) {
@@ -832,7 +829,6 @@ int UHF::soscf_update(double soscf_conv, int soscf_min_iter, int soscf_max_iter,
 double UHF::compute_orbital_gradient(bool save_fock, int max_diis_vectors) {
     SharedMatrix gradient_a = form_FDSmSDF(Fa_, Da_);
     SharedMatrix gradient_b = form_FDSmSDF(Fb_, Db_);
-    double Drms = 0.5 * (gradient_a->rms() + gradient_b->rms());
 
     if (save_fock) {
         if (initialized_diis_manager_ == false) {
@@ -846,7 +842,12 @@ double UHF::compute_orbital_gradient(bool save_fock, int max_diis_vectors) {
 
         diis_manager_->add_entry(4, gradient_a.get(), gradient_b.get(), Fa_.get(), Fb_.get());
     }
-    return Drms;
+
+    if (options_.get_bool("DIIS_RMS_ERROR")) {
+        return std::sqrt(0.5 * (std::pow(gradient_a->rms(), 2) + std::pow(gradient_b->rms(), 2)));
+    } else {
+        return std::max(gradient_a->absmax(), gradient_b->absmax());
+    }
 }
 
 bool UHF::diis() { return diis_manager_->extrapolate(2, Fa_.get(), Fb_.get()); }

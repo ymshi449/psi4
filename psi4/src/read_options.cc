@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -36,6 +36,8 @@
 
 #include "psi4/liboptions/liboptions.h"
 #include "psi4/libpsi4util/PsiOutStream.h"
+
+// clang-format off
 
 namespace psi {
 
@@ -101,15 +103,19 @@ int read_options(const std::string &name, Options &options, bool suppress_printi
     options.add("ACTIVE", new ArrayType());
 
     /*- Specifies how many core orbitals to freeze in correlated computations.
-    ``TRUE`` will default to freezing the standard default number of core
-    orbitals.  For PSI, the standard number of core orbitals is the
-    number of orbitals in the nearest previous noble gas atom.
-    More precise control over the number of frozen orbitals can be attained
-    by using the keywords |globals__num_frozen_docc| (gives the total number
-    of orbitals to freeze, program picks the lowest-energy orbitals)
-    or |globals__frozen_docc| (gives the number of orbitals to freeze per
-    irreducible representation) -*/
-    options.add_str("FREEZE_CORE", "FALSE", "FALSE TRUE");
+    ``TRUE`` or ``1`` will default to freezing the previous noble gas shell
+    on each atom. In case of positive charges on fragments, an additional
+    shell may be unfrozen, to ensure there are valence electrons in each
+    fragment. With ``FALSE`` or ``0``, no electrons are frozen (with the
+    exception of electrons treated by an ECP). With ``-1``, ``-2``, and ``-3``,
+    the user might request strict freezing of the previous first/second/third
+    noble gas shell on every atom. In this case, when there are no valence
+    electrons, the code raises an exception. More precise control over the
+    number of frozen orbitals can be attained by using the keywords
+    |globals__num_frozen_docc| (gives the total number of orbitals to freeze,
+    program picks the lowest-energy orbitals) or |globals__frozen_docc| (gives
+    the number of orbitals to freeze per irreducible representation) -*/
+    options.add_str("FREEZE_CORE", "FALSE", "FALSE TRUE 1 0 -1 -2 -3");
 
     options.add("NUM_GPUS", 1);
     /*- Do use pure angular momentum basis functions?
@@ -128,6 +134,9 @@ int read_options(const std::string &name, Options &options, bool suppress_printi
     options.add_str("WFN", "SCF");
     /*- Derivative level !expert -*/
     options.add_str("DERTYPE", "NONE", "NONE FIRST SECOND RESPONSE");
+    /*- For displacements, symmetry (Schoenflies symbol) of 'parent' (undisplaced)
+    reference molecule. Internal use only for finite difference. !expert -*/
+    options.add_str("PARENT_SYMMETRY", "");
     /*- Number of columns to print in calls to ``Matrix::print_mat``. !expert -*/
     options.add_int("MAT_NUM_COLUMN_PRINT", 5);
     /*- List of properties to compute -*/
@@ -183,13 +192,13 @@ int read_options(const std::string &name, Options &options, bool suppress_printi
     /*- Write all the MOs to the MOLDEN file (true) or discard the unoccupied MOs (false). -*/
     options.add_bool("MOLDEN_WITH_VIRTUAL", true);
 
-// CDS-TODO: We should go through and check that the user hasn't done
-// something silly like specify frozen_docc in DETCI but not in TRANSQT.
-// That would create problems.  (This was formerly checked in DETCI
-// itself, but I don't think DETCI will have the info available to check
-// this anymore).  This problem has affected users in the past.
-// Same goes for restricted_docc, restricted_uocc, ras1, ras2, ras3,
-// frozen_uocc.
+    // CDS-TODO: We should go through and check that the user hasn't done
+    // something silly like specify frozen_docc in DETCI but not in TRANSQT.
+    // That would create problems.  (This was formerly checked in DETCI
+    // itself, but I don't think DETCI will have the info available to check
+    // this anymore).  This problem has affected users in the past.
+    // Same goes for restricted_docc, restricted_uocc, ras1, ras2, ras3,
+    // frozen_uocc.
 
 #ifdef USING_dkh
     /*- Relativistic Hamiltonian type !expert -*/
@@ -249,6 +258,42 @@ int read_options(const std::string &name, Options &options, bool suppress_printi
         options.add_str_i("PCMSOLVER_PARSED_FNAME", "");
         /*- PCM-CCSD algorithm type. -*/
         options.add_str("PCM_CC_TYPE", "PTE", "PTE");
+    }
+
+    /*- PE boolean for polarizable embedding module -*/
+    options.add_bool("PE", false);
+    if (name == "PE" || options.read_globals()) {
+        /*- MODULEDESCRIPTION Performs polarizable embedding model (PE) computations. -*/
+
+        /*- Name of the potential file -*/
+        options.add_str_i("POTFILE", "potfile.pot");
+        /*- Use DIIS acceleration to obtain induced moments -*/
+        options.add_bool("DIIS", true);
+        /*- Threshold for induced moments convergence -*/
+        options.add_double("INDUCED_CONVERGENCE", 1e-8);
+        /*- Maximum number of iterations for induced moments -*/
+        options.add_int("MAXITER", 50);
+        /*- Make polarizabilities isotropic -*/
+        options.add_bool("ISOTROPIC_POL", false);
+
+        /*- Activate border options for sites in proximity to the QM/MM border -*/
+        options.add_bool("BORDER", false);
+        /*- border type, either remove or redistribute moments/polarizabilities -*/
+        options.add_str("BORDER_TYPE", "REMOVE", "REMOVE REDIST");
+        /*- minimum radius from QM atoms to MM sites to be taken into account
+        for removal/redistribution -*/
+        options.add_double("BORDER_RMIN", 2.2);
+        /*- unit of BORDER_RMIN, default is atomic units (AU) -*/
+        options.add_str("BORDER_RMIN_UNIT", "AU", "AU AA");
+        /*- order from which moments are removed, e.g.,
+        if set to 1 (default), only charges are redistributed and
+        all higher order moments are removed -*/
+        options.add_int("BORDER_REDIST_ORDER", 1);
+        /*- number of neighbor sites to redistribute to.
+        The default (-1) redistributes to all sites which are not in the border region -*/
+        options.add_int("BORDER_N_REDIST", -1);
+        /*- redistribute polarizabilities? If false, polarizabilities are removed (default) -*/
+        options.add_bool("BORDER_REDIST_POL", false);
     }
 
     if (name == "DETCI" || options.read_globals()) {
@@ -846,6 +891,9 @@ int read_options(const std::string &name, Options &options, bool suppress_printi
         /*- For SAPT(DFT) computes the S^inf Exchange-Induction terms !expert -*/
         options.add_bool("DO_IND_EXCH_SINF", false);
 
+        /*- For SAPT(DFT) computes the S^inf Exchange-Dispersion terms !expert -*/
+        options.add_bool("DO_DISP_EXCH_SINF", false);
+
         /*- Do use asynchronous disk I/O in the solution of the CPHF equations?
         Use may speed up the computation slightly at the cost of spawning an
         additional thread. -*/
@@ -891,11 +939,16 @@ int read_options(const std::string &name, Options &options, bool suppress_printi
         natural orbitals are discarded for in each of the above three truncations
         -*/
         options.add_double("OCC_TOLERANCE", 1.0E-6);
-        /*- Minimum absolute value below which all three-index DF integrals
+        /*- Schwarz screening threshold.
+        Minimum absolute value below which all three-index DF integrals
         and those contributing to four-index integrals are neglected. The
         default is conservative, but there isn't much to be gained from
         loosening it, especially for higher-order SAPT. -*/
         options.add_double("INTS_TOLERANCE", 1.0E-12);
+        /*- Do use Combined Schwarz Approximation Maximum (CSAM) screening on
+        two-electron integrals. This is a slightly tighter bound than that of
+        default Schwarz screening. -*/
+        options.add_str("SCREENING", "SCHWARZ" "SCHWARZ CSAM");
         /*- Memory safety -*/
         options.add_double("SAPT_MEM_SAFETY", 0.9);
         /*- Do force SAPT2 and higher to die if it thinks there isn't enough
@@ -966,7 +1019,7 @@ int read_options(const std::string &name, Options &options, bool suppress_printi
         options.add_double("D_CONVERGENCE", 1E-8);
         /*- Maximum number of iterations for CPHF -*/
         options.add_int("MAXITER", 50);
-        /*- Minimum absolute value below which integrals are neglected. -*/
+        /*- Schwarz screening threshold. Mininum absolute value below which TEI are neglected. -*/
         options.add_double("INTS_TOLERANCE", 0.0);
 
         // => ISAPT Zero-th Order Wavefunction Options <= //
@@ -984,6 +1037,8 @@ int read_options(const std::string &name, Options &options, bool suppress_printi
 
         /*- Do an F-SAPT analysis? -*/
         options.add_bool("FISAPT_DO_FSAPT", true);
+        /*- Do F-SAPT Dispersion? -*/
+        options.add_bool("FISAPT_DO_FSAPT_DISP", true);
         /*- Filepath to drop F-SAPT data within input file directory -*/
         options.add_str_i("FISAPT_FSAPT_FILEPATH", "fsapt/");
         /*- Do F-SAPT exchange scaling? (ratio of S^\infty to S^2) -*/
@@ -1036,13 +1091,13 @@ int read_options(const std::string &name, Options &options, bool suppress_printi
         /*- IBO Centers for Pi Degeneracy -*/
         options.add("LOCAL_IBO_STARS", new ArrayType());
     }
-    if (name == "DCFT" || options.read_globals()) {
-        /*-MODULEDESCRIPTION Performs density cumulant functional theory
+    if (name == "DCT" || options.read_globals()) {
+        /*-MODULEDESCRIPTION Performs density cumulant (functional) theory
         computations -*/
 
         /*- Reference wavefunction type -*/
         options.add_str("REFERENCE", "RHF", "UHF RHF ROHF");
-        /*- Algorithm to use for the density cumulant and orbital updates in the DCFT energy computation.
+        /*- Algorithm to use for the density cumulant and orbital updates in the DCT energy computation.
         Two-step algorithm is usually more efficient for small
         systems, but for large systems simultaneous algorithm (default) is recommended.
         If convergence problems are encountered (especially
@@ -1065,7 +1120,7 @@ int read_options(const std::string &name, Options &options, bool suppress_printi
         different calculation types. -*/
         options.add_double("E_CONVERGENCE", 1e-10);
         /*- Convergence criterion for the density cumulant and orbital guess for the
-        variationally orbital-optimized DCFT methods. Currently only available for ALGORITHM = SIMULTANEOUS. -*/
+        variationally orbital-optimized DFT methods. Currently only available for ALGORITHM = SIMULTANEOUS. -*/
         options.add_double("GUESS_R_CONVERGENCE", 1e-3);
         /*- Maximum number of macro- or micro-iterations for both energy and response equations -*/
         options.add_int("MAXITER", 40);
@@ -1095,29 +1150,23 @@ int read_options(const std::string &name, Options &options, bool suppress_printi
         options.add_double("TIKHONOW_OMEGA", 0.0);
         /*- The shift applied to the denominator in the orbital update iterations !expert-*/
         options.add_double("ORBITAL_LEVEL_SHIFT", 0.0);
-        /*- Controls whether to relax the orbitals during the energy computation or not (for debug puproses only).
-        For practical applications only the default must be used !expert-*/
-        options.add_bool("MO_RELAX", true);
-        /*- Controls whether to ignore terms containing non-idempotent contribution to OPDM or not (for debug puproses
-        only). For practical applications only the default must be used !expert-*/
-        options.add_bool("IGNORE_TAU", false);
         /*- Controls how to cache quantities within the DPD library !expert-*/
         options.add_int("CACHELEVEL", 2);
-        /*- Minimum absolute value below which integrals are neglected !expert-*/
+        /*- Schwarz screening threshold. Mininum absolute value below which TEI are neglected. !expert -*/
         options.add_double("INTS_TOLERANCE", 1e-14);
         /*- Whether to read the orbitals from a previous computation, or to compute
-            an MP2 guess !expert -*/
-        options.add_str("DCFT_GUESS", "MP2", "CC BCC MP2 DCFT");
+            an MP2 guess. !expert -*/
+        options.add_str("DCT_GUESS", "MP2", "CC BCC MP2 DCT");
         /*- Whether to perform a guess DC-06 or DC-12 computation for ODC-06 or ODC-12 methods, respectively.
             Currently only available for ALGORITHM = SIMULTANEOUS. -*/
         options.add_bool("ODC_GUESS", false);
         /*- Controls whether to relax the guess orbitals by taking the guess density cumulant
         and performing orbital update on the first macroiteration (for ALOGRITHM = TWOSTEP only) !expert-*/
         options.add_bool("RELAX_GUESS_ORBITALS", false);
-        /*- Controls whether to include the coupling terms in the DCFT electronic Hessian (for ALOGRITHM = QC
+        /*- Controls whether to include the coupling terms in the DCT electronic Hessian (for ALOGRITHM = QC
         with QC_TYPE = SIMULTANEOUS only) -*/
         options.add_bool("QC_COUPLING", false);
-        /*- Performs stability analysis of the DCFT energy !expert-*/
+        /*- Performs stability analysis of the DCT energy !expert-*/
         options.add_bool("STABILITY_CHECK", false);
         /*- The value of the rms of the residual in Schmidt orthogonalization which is used as a threshold
             for augmenting the vector subspace in stability check !expert-*/
@@ -1136,8 +1185,8 @@ int read_options(const std::string &name, Options &options, bool suppress_printi
         options.add_int("STABILITY_MAX_SPACE_SIZE", 200);
         /*- Controls whether to relax tau during the cumulant updates or not !expert-*/
         options.add_bool("RELAX_TAU", true);
-        /*- Chooses appropriate DCFT method -*/
-        options.add_str("DCFT_FUNCTIONAL", "ODC-12", "DC-06 DC-12 ODC-06 ODC-12 ODC-13 CEPA0");
+        /*- Chooses appropriate DCT method -*/
+        options.add_str("DCT_FUNCTIONAL", "ODC-12", "DC-06 DC-12 ODC-06 ODC-12 ODC-13 CEPA0");
         /*- Whether to compute three-particle energy correction or not -*/
         options.add_str("THREE_PARTICLE", "NONE", "NONE PERTURBATIVE");
         /*- Do write a MOLDEN output file?  If so, the filename will end in
@@ -1146,13 +1195,13 @@ int read_options(const std::string &name, Options &options, bool suppress_printi
         the current molecule. -*/
         options.add_bool("MOLDEN_WRITE", false);
         /*- Level shift applied to the diagonal of the density-weighted Fock operator. While this shift can improve
-           convergence, it does change the DCFT energy. !expert-*/
+           convergence, it does change the DCT energy. !expert-*/
         options.add_double("ENERGY_LEVEL_SHIFT", 0.0);
-        /*- What algorithm to use for the DCFT computation -*/
-        options.add_str("DCFT_TYPE", "CONV", "CONV DF");
-        /*- Auxiliary basis set for DCFT density fitting computations.
+        /*- What algorithm to use for the DCT computation -*/
+        options.add_str("DCT_TYPE", "CONV", "CONV DF");
+        /*- Auxiliary basis set for DCT density fitting computations.
         :ref:`Defaults <apdx:basisFamily>` to a RI basis. -*/
-        options.add_str("DF_BASIS_DCFT", "");
+        options.add_str("DF_BASIS_DCT", "");
     }
     if (name == "GDMA" || options.read_globals()) {
         /*- MODULEDESCRIPTION Performs distributed multipole analysis (DMA), using
@@ -1215,8 +1264,9 @@ int read_options(const std::string &name, Options &options, bool suppress_printi
         options.add_int("MAX_MEM_BUF", 0);
         /*- Tolerance for Cholesky decomposition of the ERI tensor -*/
         options.add_double("CHOLESKY_TOLERANCE", 1e-4);
-        /*- Use DF integrals tech to converge the SCF before switching to a conventional tech
-            in a |scf__scf_type| ``DIRECT`` calculation -*/
+        /*- Do a density fitting SCF calculation to converge the
+            orbitals before switching to the use of exact integrals in
+            a |scf__scf_type| ``DIRECT`` calculation -*/
         options.add_bool("DF_SCF_GUESS", true);
         /*- Keep JK object for later use? -*/
         options.add_bool("SAVE_JK", false);
@@ -1224,15 +1274,14 @@ int read_options(const std::string &name, Options &options, bool suppress_printi
         options.add_double("SCF_MEM_SAFETY_FACTOR", 0.75);
         /*- SO orthogonalization: symmetric or canonical? -*/
         options.add_str("S_ORTHOGONALIZATION", "SYMMETRIC", "SYMMETRIC CANONICAL");
-        /*- Minimum S matrix eigenvalue to be used before compensating for linear
-        dependencies. -*/
+        /*- Minimum S matrix eigenvalue to allow before linear dependencies are removed. -*/
         options.add_double("S_TOLERANCE", 1E-7);
-        /*- Minimum absolute value below which TEI are neglected. -*/
+        /*- Schwarz screening threshold. Mininum absolute value below which TEI are neglected. -*/
         options.add_double("INTS_TOLERANCE", 0.0);
-        /*- The type of guess orbitals.  Defaults to SAD for RHF, GWH for ROHF and UHF,
-        and READ for geometry optimizations after the first step. -*/
-
-        options.add_str("GUESS", "AUTO", "AUTO CORE GWH SAD READ");
+        /*- The type of guess orbitals.  Defaults to ``READ`` for geometry optimizations after the first step, to
+          ``CORE`` for single atoms, and to ``SAD`` otherwise. The ``HUCKEL`` guess employs on-the-fly calculations
+          like SAD, as described in doi:10.1021/acs.jctc.8b01089 which also describes the SAP guess. -*/
+        options.add_str("GUESS", "AUTO", "AUTO CORE GWH SAD SADNO SAP HUCKEL READ");
         /*- Mix the HOMO/LUMO in UHF or UKS to break alpha/beta spatial symmetry.
         Useful to produce broken-symmetry unrestricted solutions.
         Notice that this procedure is defined only for calculations in C1 symmetry. -*/
@@ -1246,12 +1295,16 @@ int read_options(const std::string &name, Options &options, bool suppress_printi
         even during a geometry optimization. -*/
         options.add_bool("GUESS_PERSIST", false);
 
-        /*- Flag to print the molecular orbitals. -*/
+        /*- Do print the molecular orbitals? -*/
         options.add_bool("PRINT_MOS", false);
-        /*- Flag to print the basis set. -*/
+        /*- Do print the basis set? -*/
         options.add_bool("PRINT_BASIS", false);
         /*- Do perform a QCHF computation?  -*/
         options.add_bool("QCHF", false);
+
+        /*- SCF Properties to calculate after an energy evaluation. Note, this
+        keyword is not used for property evaluations. -*/
+        options.add("SCF_PROPERTIES", new ArrayType());
 
         /*- SUBSECTION Convergence Control/Stabilization -*/
 
@@ -1264,11 +1317,12 @@ int read_options(const std::string &name, Options &options, bool suppress_printi
         Convergence & Algorithm <table:conv_scf>` for default convergence
         criteria for different calculation types. -*/
         options.add_double("E_CONVERGENCE", 1e-6);
-        /*- Convergence criterion for SCF density, which is defined as the RMS
-        value of the orbital gradient.  See Table :ref:`SCF Convergence & Algorithm
-        <table:conv_scf>` for default convergence criteria for different
-        calculation types.
-        **Cfour Interface:** Keyword translates into |cfour__cfour_scf_conv|. -*/
+        /*- Convergence criterion for SCF density, defined as the RMS
+        or maximum absolute value of the orbital gradient.  See Table
+        :ref:`SCF Convergence & Algorithm <table:conv_scf>` for
+        default convergence criteria for different calculation types.
+        **Cfour Interface:** Keyword translates into
+        |cfour__cfour_scf_conv|. -*/
         options.add_double("D_CONVERGENCE", 1e-6);
         /*- The amount (percentage) of damping to apply to the early density updates.
             0 will result in a full update, 100 will completely stall the update.  A
@@ -1290,6 +1344,8 @@ int read_options(const std::string &name, Options &options, bool suppress_printi
         set. A value of ``TRUE`` turns on density fitting with the
         default basis, otherwise the specified basis is used. -*/
         options.add_str("DF_BASIS_GUESS", "FALSE", "");
+        /*- Use RMS error instead of the more robust absolute error? -*/
+        options.add_bool("DIIS_RMS_ERROR", true);
         /*- The minimum iteration to start storing DIIS vectors -*/
         options.add_int("DIIS_START", 1);
         /*- Minimum number of error vectors stored for DIIS extrapolation -*/
@@ -1338,7 +1394,7 @@ int read_options(const std::string &name, Options &options, bool suppress_printi
         options.add_int("FRAC_START", 0);
         /*- The absolute indices of occupied orbitals to fractionally occupy (+/- for alpha/beta) -*/
         options.add("FRAC_OCC", new ArrayType());
-        /*- The occupations of the orbital indices specified above ($0.0\ge occ \ge 1.0$) -*/
+        /*- The occupations of the orbital indices specified above ($0.0\le {\rm occ} \le 1.0$) -*/
         options.add("FRAC_VAL", new ArrayType());
         /*- Do use DIIS extrapolation to accelerate convergence in frac? -*/
         options.add_bool("FRAC_DIIS", true);
@@ -1400,8 +1456,8 @@ int read_options(const std::string &name, Options &options, bool suppress_printi
         options.add_int("DF_INTS_NUM_THREADS", 0);
         /*- IO caching for CP corrections, etc !expert -*/
         options.add_str("DF_INTS_IO", "NONE", "NONE SAVE LOAD");
-        /*- Fitting Condition !expert -*/
-        options.add_double("DF_FITTING_CONDITION", 1.0E-12);
+        /*- Fitting Condition, i.e. eigenvalue threshold for RI basis. Analogous to S_TOLERANCE !expert -*/
+        options.add_double("DF_FITTING_CONDITION", 1.0E-10);
         /*- FastDF Fitting Metric -*/
         options.add_str("DF_METRIC", "COULOMB", "COULOMB EWALD OVERLAP");
         /*- FastDF SR Ewald metric range separation parameter -*/
@@ -1417,19 +1473,21 @@ int read_options(const std::string &name, Options &options, bool suppress_printi
 
         /*- The amount of SAD information to print to the output !expert -*/
         options.add_int("SAD_PRINT", 0);
-        /*- Convergence criterion for SCF energy in SAD Guess. -*/
+        /*- Convergence criterion for SCF energy in the SAD guess, analogous to |scf__e_convergence|. -*/
         options.add_double("SAD_E_CONVERGENCE", 1E-5);
-        /*- Convergence criterion for SCF density in SAD Guess. -*/
+        /*- Convergence criterion for SCF density in the SAD guess, analogous to |scf__d_convergence|. -*/
         options.add_double("SAD_D_CONVERGENCE", 1E-5);
-        /*- Fitting SAD basis !expert -*/
+        /*- Density fitting basis used in SAD !expert -*/
         options.add_str("DF_BASIS_SAD", "SAD-FIT");
-        /*- Maximum number of SAD guess iterations !expert -*/
+        /*- Maximum number of atomic SCF iterations within SAD !expert -*/
         options.add_int("SAD_MAXITER", 50);
-        /*- SCF type of SAD guess !expert -*/
-        options.add_str("SAD_SCF_TYPE", "DF", "DIRECT DF");
+        /*- SCF type used for atomic calculations in SAD guess !expert -*/
+        options.add_str("SAD_SCF_TYPE", "DF", "DIRECT DF MEM_DF DISK_DF PK OUT_OF_CORE CD GTFOCK");
         /*- Do force an even distribution of occupations across the last partially occupied orbital shell? !expert -*/
-        options.add_bool("SAD_FRAC_OCC", false);
-        /*- Auxiliary basis for the SAD guess !expert -*/
+        options.add_bool("SAD_FRAC_OCC", true);
+        /*- Do use spin-averaged occupations instead of atomic ground spin state in fractional SAD? !expert -*/
+        options.add_bool("SAD_SPIN_AVERAGE", true);
+        /*- SAD guess density decomposition threshold !expert -*/
         options.add_double("SAD_CHOL_TOLERANCE", 1E-7);
 
         /*- SUBSECTION DFT -*/
@@ -1463,16 +1521,20 @@ int read_options(const std::string &name, Options &options, bool suppress_printi
         /*- Radial Scheme. -*/
         options.add_str("DFT_RADIAL_SCHEME", "TREUTLER", "TREUTLER BECKE MULTIEXP EM MURA");
         /*- Nuclear Scheme. -*/
-        options.add_str("DFT_NUCLEAR_SCHEME", "TREUTLER", "TREUTLER BECKE NAIVE STRATMANN");
+        options.add_str("DFT_NUCLEAR_SCHEME", "TREUTLER", "TREUTLER BECKE NAIVE STRATMANN SBECKE");
         /*- Factor for effective BS radius in radial grid. -*/
         options.add_double("DFT_BS_RADIUS_ALPHA", 1.0);
         /*- DFT basis cutoff. -*/
         options.add_double("DFT_BASIS_TOLERANCE", 1.0E-12);
+        /*- grid weight cutoff. Disable with -1.0. !expert -*/
+        options.add_double("DFT_WEIGHTS_TOLERANCE", 1.0E-15);
         /*- The DFT grid specification, such as SG1.!expert -*/
         options.add_str("DFT_GRID_NAME", "", "SG0 SG1");
-        /*- Pruning Scheme. !expert -*/
-        options.add_str("DFT_PRUNING_SCHEME", "FLAT",
-                        "FLAT P_GAUSSIAN D_GAUSSIAN P_SLATER D_SLATER LOG_GAUSSIAN LOG_SLATER");
+        /*- Select approach for pruning. Options ``ROBUST`` and ``TREUTLER`` prune based on regions (proximity to nucleus) while
+        ``FLAT`` ``P_GAUSSIAN`` ``D_GAUSSIAN`` ``P_SLATER`` ``D_SLATER`` ``LOG_GAUSSIAN`` ``LOG_SLATER`` prune based on decaying functions (experts only!).
+        The recommended scheme is ``ROBUST``. -*/
+        options.add_str("DFT_PRUNING_SCHEME", "NONE",
+                        "ROBUST TREUTLER NONE FLAT P_GAUSSIAN D_GAUSSIAN P_SLATER D_SLATER LOG_GAUSSIAN LOG_SLATER NONE");
         /*- Spread alpha for logarithmic pruning. !expert -*/
         options.add_double("DFT_PRUNING_ALPHA", 1.0);
         /*- The maximum number of grid points per evaluation block. !expert -*/
@@ -1535,68 +1597,17 @@ int read_options(const std::string &name, Options &options, bool suppress_printi
             CIS analysis
          -*/
         options.add_double("CIS_AMPLITUDE_CUTOFF", 0.15);
-        /*- Memory safety factor for allocating JK
-        -*/
-        options.add_double("TDHF_MEM_SAFETY_FACTOR", 0.75);
-        /*- Memory safety factor for allocating JK
-        -*/
-        options.add_double("CIS_MEM_SAFETY_FACTOR", 0.75);
-        /*- Memory safety factor for allocating JK
-        -*/
-        options.add_double("CPHF_MEM_SAFETY_FACTOR", 0.75);
-        /*- Which states to save AO OPDMs for?
-         *   Positive - Singlets
-         *   Negative - Triplets
-         * -*/
-        options.add("CIS_OPDM_STATES", new ArrayType());
-        /*- Which states to save AO transition OPDMs for?
-         *   Positive - Singlets
-         *   Negative - Triplets
-         * -*/
-        options.add("CIS_TOPDM_STATES", new ArrayType());
-        /*- Which states to save AO difference OPDMs for?
-         *   Positive - Singlets
-         *   Negative - Triplets
-         * -*/
-        options.add("CIS_DOPDM_STATES", new ArrayType());
-        /*- Which states to save AO Natural Orbitals for?
-         *   Positive - Singlets
-         *   Negative - Triplets
-         * -*/
-        options.add("CIS_NO_STATES", new ArrayType());
-        /*- Which states to save AD Matrices for?
-         *   Positive - Singlets
-         *   Negative - Triplets
-         * -*/
-        options.add("CIS_AD_STATES", new ArrayType());
         /*- Which tasks to run CPHF For
          *  Valid choices:
          *  -Polarizability
          * -*/
         options.add("CPHF_TASKS", new ArrayType());
-        /*- The maximum number of integral threads (0 for Process::environment.get_n_threads())
-         -*/
-        options.add_int("OMP_N_THREAD", 0);
-        /*- The Schwarz cutoff value
-         -*/
-        options.add_double("SCHWARZ_CUTOFF", 1.0E-12);
-        /*- Do we do the QQR integral sieve of Maurer et al. When false, just uses
-         *  the Schwarz sieve.
-         -*/
-        options.add_bool("DO_QQR_SIEVE", false);
-        /*- The maximum reciprocal condition allowed in the fitting metric
-         -*/
-        options.add_double("FITTING_CONDITION", 1.0E-12);
-        /*- Fitting algorithm (0 for old, 1 for new)
-         -*/
-        options.add_int("FITTING_ALGORITHM", 0);
+        /*- Memory safety factor for allocating JK
+        -*/
+        options.add_double("CPHF_MEM_SAFETY_FACTOR", 0.75);
         /*- SCF Type
          -*/
         options.add_str("SCF_TYPE", "DIRECT", "DIRECT DF PK OUT_OF_CORE PS INDEPENDENT GTFOCK");
-        /*- JK Independent options
-         -*/
-        options.add_str("INDEPENDENT_J_TYPE", "DIRECT_SCREENING", "DIRECT_SCREENING");
-        options.add_str("INDEPENDENT_K_TYPE", "DIRECT_SCREENING", "DIRECT_SCREENING LINK");
         /*- Auxiliary basis for SCF
          -*/
         options.add_str("DF_BASIS_SCF", "");
@@ -1676,7 +1687,7 @@ int read_options(const std::string &name, Options &options, bool suppress_printi
         options.add_str("WFN", "SCF");
         /*- Reference wavefunction type -*/
         options.add_str("REFERENCE", "RHF");
-        /*- Minimum absolute value below which integrals are neglected. -*/
+        /*- Schwarz screening threshold. Mininum absolute value below which TEI are neglected. -*/
         options.add_double("INTS_TOLERANCE", 1e-14);
         /*- The amount of caching of data to perform -*/
         options.add_int("CACHELEVEL", 2);
@@ -2045,7 +2056,7 @@ int read_options(const std::string &name, Options &options, bool suppress_printi
         options.add_double("LEVEL_SHIFT", 0.0);
         /*- Convergence criterion for energy. -*/
         options.add_double("E_CONVERGENCE", 1e-6);
-        /*- Convergence criterion for density. -*/
+        /*- Convergence criterion for density, as measured by the orbital gradient. -*/
         options.add_double("D_CONVERGENCE", 1e-6);
         /*- Maximum number of iterations -*/
         options.add_int("MAXITER", 100);
@@ -2230,7 +2241,7 @@ int read_options(const std::string &name, Options &options, bool suppress_printi
         options.add_double("MP2_SS_SCALE", 1.0 / 3.0);
         /*- \% of memory for DF-MP2 three-index buffers -*/
         options.add_double("DFMP2_MEM_FACTOR", 0.9);
-        /*- Minimum absolute value below which integrals are neglected. -*/
+        /*- Schwarz screening threshold. Mininum absolute value below which TEI are neglected. -*/
         options.add_double("INTS_TOLERANCE", 0.0);
         /*- Minimum error in the 2-norm of the P(2) matrix for corrections to Lia and P. -*/
         options.add_double("DFMP2_P2_TOLERANCE", 0.0);
@@ -2443,9 +2454,7 @@ int read_options(const std::string &name, Options &options, bool suppress_printi
         or RMS_*_G_CONVERGENCE options will append to overwrite the criteria set here
         unless |optking__flexible_g_convergence| is also on.      See Table :ref:`Geometry Convergence
         <table:optkingconv>` for details. -*/
-        options.add_str(
-            "G_CONVERGENCE", "QCHEM",
-            "QCHEM MOLPRO GAU GAU_LOOSE GAU_TIGHT INTERFRAG_TIGHT GAU_VERYTIGHT TURBOMOLE CFOUR NWCHEM_LOOSE");
+        options.add_str("G_CONVERGENCE", "QCHEM", "QCHEM MOLPRO GAU GAU_LOOSE GAU_TIGHT INTERFRAG_TIGHT GAU_VERYTIGHT TURBOMOLE CFOUR NWCHEM_LOOSE");
         /*- Convergence criterion for geometry optmization: maximum force
         (internal coordinates, atomic units). -*/
         options.add_double("MAX_FORCE_G_CONVERGENCE", 3.0e-4);
@@ -2872,7 +2881,7 @@ int read_options(const std::string &name, Options &options, bool suppress_printi
         fort.56. -*/
         options.add_double("E_CONVERGENCE", 1e-6);
 
-        /*- Minimum absolute value below which integrals are neglected. -*/
+        /*- Schwarz screening threshold. Mininum absolute value below which TEI are neglected. -*/
         options.add_double("INTS_TOLERANCE", 1.0E-12);
 
         /*- Maximum excitation level. This is used ONLY if it is explicitly set by the user.
@@ -4586,4 +4595,5 @@ int read_options(const std::string &name, Options &options, bool suppress_printi
 
 }  // namespace psi
 
+// clang-format on
 //  LocalWords:  Psi4

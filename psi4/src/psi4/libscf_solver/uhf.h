@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -41,7 +41,6 @@ class UHF : public HF {
     SharedMatrix Da_old_, Db_old_;
     SharedMatrix Ga_, Gb_, J_, Ka_, Kb_, wKa_, wKb_;
 
-    void form_initialF();
     double compute_initial_E() override;
     bool stability_analysis_pk();
 
@@ -89,10 +88,10 @@ class UHF : public HF {
     /// Hessian-vector computers and solvers
     std::vector<SharedMatrix> onel_Hx(std::vector<SharedMatrix> x) override;
     std::vector<SharedMatrix> twoel_Hx(std::vector<SharedMatrix> x, bool combine = true,
-                                               std::string return_basis = "MO") override;
+                                       std::string return_basis = "MO") override;
     std::vector<SharedMatrix> cphf_Hx(std::vector<SharedMatrix> x) override;
-    std::vector<SharedMatrix> cphf_solve(std::vector<SharedMatrix> x_vec, double conv_tol = 1.e-4,
-                                                 int max_iter = 10, int print_lvl = 1) override;
+    std::vector<SharedMatrix> cphf_solve(std::vector<SharedMatrix> x_vec, double conv_tol = 1.e-4, int max_iter = 10,
+                                         int print_lvl = 1) override;
 
     std::shared_ptr<UHF> c1_deep_copy(std::shared_ptr<BasisSet> basis);
 };

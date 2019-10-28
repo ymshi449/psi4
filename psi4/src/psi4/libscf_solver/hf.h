@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -47,8 +47,6 @@ namespace scf {
 
 class HF : public Wavefunction {
    protected:
-    double Drms_;
-
     /// The kinetic energy matrix
     SharedMatrix T_;
     /// The 1e potential energy matrix
@@ -89,9 +87,6 @@ class HF : public Wavefunction {
     std::vector<std::shared_ptr<BasisSet>> sad_basissets_;
     std::vector<std::shared_ptr<BasisSet>> sad_fitting_basissets_;
 
-    ///
-    bool ref_C_;
-
     /// Current Iteration
     int iteration_;
 
@@ -116,7 +111,10 @@ class HF : public Wavefunction {
     Dimension original_soccpi_;
     int original_nalpha_;
     int original_nbeta_;
+    // Reset occupations in SCF iteration?
     bool reset_occ_;
+    // SAD guess, non-idempotent guess density?
+    bool sad_;
 
     /// Mapping arrays
     int* so2symblk_;
@@ -206,13 +204,12 @@ class HF : public Wavefunction {
     int multiplicity_;
 
     /// SAD Guess and propagation
-    void compute_SAD_guess();
+    virtual void compute_SAD_guess(bool natorb);
+    /// Huckel guess
+    virtual void compute_huckel_guess();
 
     /** Transformation, diagonalization, and backtransform of Fock matrix */
     virtual void diagonalize_F(const SharedMatrix& F, SharedMatrix& C, std::shared_ptr<Vector>& eps);
-
-    /** Computes the initial MO coefficients (default is to call form_C) */
-    virtual void form_initial_C() { form_C(); }
 
     /** Form Fia (for DIIS) **/
     virtual SharedMatrix form_Fia(SharedMatrix Fso, SharedMatrix Cso, int* noccpi);
@@ -274,9 +271,6 @@ class HF : public Wavefunction {
 
     /// Prints some opening information
     void print_header();
-
-    /// Prints some details about nsopi/nmopi, and initial occupations
-    void print_preiterations();
 
     /** Compute/print spin contamination information (if unrestricted) **/
     virtual void compute_spin_contamination();
@@ -346,7 +340,7 @@ class HF : public Wavefunction {
     virtual void form_H();
 
     /// Do any needed integral JK setup
-    virtual void initialize_jk(size_t effective_memory_doubles);
+    virtual void initialize_gtfock_jk();
 
     /// Formation of S^+1/2 and S^-1/2 are the same
     void form_Shalf();
@@ -356,6 +350,8 @@ class HF : public Wavefunction {
 
     /// Compute the MO coefficients (C_)
     virtual void form_C();
+    /** Computes the initial MO coefficients (default is to call form_C) */
+    virtual void form_initial_C() { form_C(); }
 
     /// Computes the density matrix (D_)
     virtual void form_D();
@@ -365,6 +361,8 @@ class HF : public Wavefunction {
 
     /** Computes the Fock matrix */
     virtual void form_F();
+    /** Computes the initial Fock matrix (default is to call form_F) */
+    virtual void form_initial_F() { form_F(); }
 
     /** Forms the G matrix */
     virtual void form_G();
@@ -395,6 +393,9 @@ class HF : public Wavefunction {
     // Expert option to reset the occuption or not at iteration zero
     bool reset_occ() const { return reset_occ_; }
     void set_reset_occ(bool reset) { reset_occ_ = reset; }
+    // Expert option to toggle non-idempotent density matrix or not at iteration zero
+    bool sad() const { return sad_; }
+    void set_sad(bool sad) { sad_ = sad; }
 
     // SAD information
     void set_sad_basissets(std::vector<std::shared_ptr<BasisSet>> basis_vec) { sad_basissets_ = basis_vec; }

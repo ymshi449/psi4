@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -104,7 +104,7 @@ class PSI_API OperatorSymmetry {
     std::vector<SharedMatrix> create_matrices(const std::string& basename);
 };
 
-class MultipoleSymmetry {
+class PSI_API MultipoleSymmetry {
     // The order of the multipole (dipole=1, quadrupole=2, etc...)
     int order_;
 

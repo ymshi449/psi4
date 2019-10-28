@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -44,7 +44,7 @@ class Molecule;
 class Matrix;
 class Wavefunction;
 
-class FCHKWriter {
+class PSI_API FCHKWriter {
    private:
     /*! \brief Extracts information from a wavefunction object, and writes it into a formatted FCHK
      * file.  */
@@ -74,7 +74,7 @@ class PSI_API MoldenWriter {
                std::shared_ptr<Vector> OccB, bool dovirtual);
 };
 
-class MOWriter {
+class PSI_API MOWriter {
     std::shared_ptr<Wavefunction> wavefunction_;
     bool restricted_;
 
@@ -88,7 +88,7 @@ class MOWriter {
     void write();
 };
 
-class NBOWriter {
+class PSI_API NBOWriter {
     std::shared_ptr<Wavefunction> wavefunction_;
 
    public:

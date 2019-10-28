@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -40,6 +40,7 @@
 #include "psi4/libmints/matrix.h"
 #include "psi4/libmints/basisset.h"
 #include "psi4/lib3index/cholesky.h"
+#include "psi4/lib3index/dfhelper.h"
 #include "psi4/libmints/petitelist.h"
 #include "psi4/libmints/integral.h"
 #include "psi4/libpsi4util/PsiOutStream.h"
@@ -55,6 +56,17 @@ using namespace psi;
 
 namespace psi {
 
+template<class T>
+void _set_dfjk_options(T* jk, Options& options){
+    if (options["INTS_TOLERANCE"].has_changed()) jk->set_cutoff(options.get_double("INTS_TOLERANCE"));
+    if (options["PRINT"].has_changed()) jk->set_print(options.get_int("PRINT"));
+    if (options["DEBUG"].has_changed()) jk->set_debug(options.get_int("DEBUG"));
+    if (options["BENCH"].has_changed()) jk->set_bench(options.get_int("BENCH"));
+    jk->set_condition(options.get_double("DF_FITTING_CONDITION"));
+    if (options["DF_INTS_NUM_THREADS"].has_changed())
+        jk->set_df_ints_num_threads(options.get_int("DF_INTS_NUM_THREADS"));
+}
+
 JK::JK(std::shared_ptr<BasisSet> primary) : primary_(primary) { common_init(); }
 JK::~JK() {}
 std::shared_ptr<JK> JK::build_JK(std::shared_ptr<BasisSet> primary, std::shared_ptr<BasisSet> auxiliary,
@@ -63,7 +75,7 @@ std::shared_ptr<JK> JK::build_JK(std::shared_ptr<BasisSet> primary, std::shared_
     if (jk_type == "DF") {
         outfile->Printf("\n  Warning: JK type 'DF' found in simple constructor, defaulting to DiskDFJK.\n");
         outfile->Printf("           Please use the build_JK(primary, auxiliary, options, do_wK, memory)\n");
-        outfile->Printf("           constructor as DiskDFJK non-optimal performance.\n\n");
+        outfile->Printf("           constructor as DiskDFJK has non-optimal performance for many workloads.\n\n");
         jk_type = "DISK_DF";
     }
 
@@ -71,12 +83,12 @@ std::shared_ptr<JK> JK::build_JK(std::shared_ptr<BasisSet> primary, std::shared_
         CDJK* jk = new CDJK(primary, options.get_double("CHOLESKY_TOLERANCE"));
 
         if (options["INTS_TOLERANCE"].has_changed()) jk->set_cutoff(options.get_double("INTS_TOLERANCE"));
+        if (options["SCREENING"].has_changed()) jk->set_csam(options.get_str("SCREENING") == "CSAM"); 
         if (options["PRINT"].has_changed()) jk->set_print(options.get_int("PRINT"));
         if (options["DEBUG"].has_changed()) jk->set_debug(options.get_int("DEBUG"));
         if (options["BENCH"].has_changed()) jk->set_bench(options.get_int("BENCH"));
         if (options["DF_INTS_IO"].has_changed()) jk->set_df_ints_io(options.get_str("DF_INTS_IO"));
-        if (options["DF_FITTING_CONDITION"].has_changed())
-            jk->set_condition(options.get_double("DF_FITTING_CONDITION"));
+        jk->set_condition(options.get_double("DF_FITTING_CONDITION"));
         if (options["DF_INTS_NUM_THREADS"].has_changed())
             jk->set_df_ints_num_threads(options.get_int("DF_INTS_NUM_THREADS"));
 
@@ -84,31 +96,14 @@ std::shared_ptr<JK> JK::build_JK(std::shared_ptr<BasisSet> primary, std::shared_
 
     } else if (jk_type == "DISK_DF") {
         DiskDFJK* jk = new DiskDFJK(primary, auxiliary);
-
-        if (options["INTS_TOLERANCE"].has_changed()) jk->set_cutoff(options.get_double("INTS_TOLERANCE"));
-        if (options["PRINT"].has_changed()) jk->set_print(options.get_int("PRINT"));
-        if (options["DEBUG"].has_changed()) jk->set_debug(options.get_int("DEBUG"));
-        if (options["BENCH"].has_changed()) jk->set_bench(options.get_int("BENCH"));
+        _set_dfjk_options<DiskDFJK>(jk, options);
         if (options["DF_INTS_IO"].has_changed()) jk->set_df_ints_io(options.get_str("DF_INTS_IO"));
-        if (options["DF_FITTING_CONDITION"].has_changed())
-            jk->set_condition(options.get_double("DF_FITTING_CONDITION"));
-        if (options["DF_INTS_NUM_THREADS"].has_changed())
-            jk->set_df_ints_num_threads(options.get_int("DF_INTS_NUM_THREADS"));
 
         return std::shared_ptr<JK>(jk);
 
     } else if (jk_type == "MEM_DF") {
         MemDFJK* jk = new MemDFJK(primary, auxiliary);
-
-        if (options["INTS_TOLERANCE"].has_changed()) jk->set_cutoff(options.get_double("INTS_TOLERANCE"));
-        if (options["PRINT"].has_changed()) jk->set_print(options.get_int("PRINT"));
-        if (options["DEBUG"].has_changed()) jk->set_debug(options.get_int("DEBUG"));
-        if (options["BENCH"].has_changed()) jk->set_bench(options.get_int("BENCH"));
-        // if (options["DF_INTS_IO"].has_changed()) jk->set_df_ints_io(options.get_str("DF_INTS_IO"));
-        if (options["DF_FITTING_CONDITION"].has_changed())
-            jk->set_condition(options.get_double("DF_FITTING_CONDITION"));
-        if (options["DF_INTS_NUM_THREADS"].has_changed())
-            jk->set_df_ints_num_threads(options.get_int("DF_INTS_NUM_THREADS"));
+        _set_dfjk_options<MemDFJK>(jk, options);
 
         return std::shared_ptr<JK>(jk);
 
@@ -116,6 +111,7 @@ std::shared_ptr<JK> JK::build_JK(std::shared_ptr<BasisSet> primary, std::shared_
         PKJK* jk = new PKJK(primary, options);
 
         if (options["INTS_TOLERANCE"].has_changed()) jk->set_cutoff(options.get_double("INTS_TOLERANCE"));
+        if (options["SCREENING"].has_changed()) jk->set_csam(options.get_str("SCREENING") == "CSAM"); 
         if (options["PRINT"].has_changed()) jk->set_print(options.get_int("PRINT"));
         if (options["DEBUG"].has_changed()) jk->set_debug(options.get_int("DEBUG"));
 
@@ -125,6 +121,7 @@ std::shared_ptr<JK> JK::build_JK(std::shared_ptr<BasisSet> primary, std::shared_
         DiskJK* jk = new DiskJK(primary, options);
 
         if (options["INTS_TOLERANCE"].has_changed()) jk->set_cutoff(options.get_double("INTS_TOLERANCE"));
+        if (options["SCREENING"].has_changed()) jk->set_csam(options.get_str("SCREENING") == "CSAM"); 
         if (options["PRINT"].has_changed()) jk->set_print(options.get_int("PRINT"));
         if (options["DEBUG"].has_changed()) jk->set_debug(options.get_int("DEBUG"));
         if (options["BENCH"].has_changed()) jk->set_bench(options.get_int("BENCH"));
@@ -135,6 +132,7 @@ std::shared_ptr<JK> JK::build_JK(std::shared_ptr<BasisSet> primary, std::shared_
         DirectJK* jk = new DirectJK(primary);
 
         if (options["INTS_TOLERANCE"].has_changed()) jk->set_cutoff(options.get_double("INTS_TOLERANCE"));
+        if (options["SCREENING"].has_changed()) jk->set_csam(options.get_str("SCREENING") == "CSAM"); 
         if (options["PRINT"].has_changed()) jk->set_print(options.get_int("PRINT"));
         if (options["DEBUG"].has_changed()) jk->set_debug(options.get_int("DEBUG"));
         if (options["BENCH"].has_changed()) jk->set_bench(options.get_int("BENCH"));
@@ -165,20 +163,19 @@ std::shared_ptr<JK> JK::build_JK(std::shared_ptr<BasisSet> primary, std::shared_
 
     if (jk_type == "DF") {
         // logic for MemDFJK vs DiskDFJK
-        if (do_wK || !auxiliary->has_puream() || options["DF_INTS_IO"].has_changed()) {
+        if (do_wK || options["DF_INTS_IO"].has_changed()) {
             return build_JK(primary, auxiliary, options, "DISK_DF");
 
         } else {
-            // conservative estimate for size of 3-center AOs
-            size_t nbf = primary->nbf();
-            size_t naux = auxiliary->nbf();
-            size_t required = naux * nbf * nbf;  // + nthreads_ * nbf * nbf TODO
-
-            if (required > doubles) {
-                return build_JK(primary, auxiliary, options, "DISK_DF");
-            } else {
-                return build_JK(primary, auxiliary, options, "MEM_DF");
+            // Build exact estimate via Schwarz metrics
+            auto jk = build_JK(primary, auxiliary, options, "MEM_DF");
+            if (jk->memory_estimate() < doubles) {
+                return jk;
             }
+            jk.reset();
+
+            // Use Disk DFJK
+            return build_JK(primary, auxiliary, options, "DISK_DF");
         }
 
     } else {  // otherwise it has already been set
@@ -204,6 +201,7 @@ void JK::common_init() {
     omp_nthread_ = Process::environment.get_n_threads();
 #endif
     cutoff_ = 1.0E-12;
+    do_csam_ = false;
 
     do_J_ = true;
     do_K_ = true;

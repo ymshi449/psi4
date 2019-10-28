@@ -3,7 +3,7 @@
 #
 # Psi4: an open-source quantum chemistry software package
 #
-# Copyright (c) 2007-2018 The Psi4 Developers.
+# Copyright (c) 2007-2019 The Psi4 Developers.
 #
 # The copyrights for code used from other parties are included in
 # the corresponding files.
@@ -32,8 +32,6 @@ Justin M. Turney, with incremental improvements by other
 psi4 developers.
 
 """
-from __future__ import absolute_import
-from __future__ import print_function
 import math
 import copy
 import collections
@@ -52,10 +50,8 @@ class CoordValue(object):
     """
 
     def __init__(self, fixed=False, computed=False):
-        # Fixed coordinate?
+        # Fixed coordinate? For a fixed value, the reset method does nothing.
         self.PYfixed = fixed
-        # Whether the current value is up to date or not
-        self.computed = computed
 
     def set_fixed(self, fixed):
         """Set whether the coordinate value is fixed or not"""
@@ -64,10 +60,6 @@ class CoordValue(object):
     def fixed(self):
         """Get whether the coordinate value is fixed or not"""
         return self.PYfixed
-
-    def invalidate(self):
-        """Flag the current value as outdated"""
-        self.computed = False
 
     def everything(self):
         print('\nCoordValue\n  Fixed = %s\n  Computed = %s\n\n' % (self.PYfixed, self.computed))
@@ -103,8 +95,8 @@ class NumberValue(CoordValue):
         return "%*.*f" % (precision + 5, precision, self.compute())
 
     def everything(self):
-        print('\nNumberValue\n  Fixed = %s\n  Computed = %s\n  Type = %s\n  Value = %f\n  FValue = %s\n\n' %
-            (self.PYfixed, self.computed, self.type(), self.value, self.variable_to_string(4)))
+        print('\nNumberValue\n  Fixed = %s\n  Type = %s\n  Value = %f\n  FValue = %s\n\n' %
+            (self.PYfixed, self.type(), self.value, self.variable_to_string(4)))
 
 
 class VariableValue(CoordValue):
@@ -163,8 +155,8 @@ class VariableValue(CoordValue):
             return self.PYname
 
     def everything(self):
-        print('\nVariableValue\n  Fixed = %s\n  Computed = %s\n  Type = %s\n  Value = %f\n  FValue = %s\n  Name = %s\n  Negated = %s\n  Map = %s\n\n' %
-            (self.PYfixed, self.computed, self.type(), self.compute(), self.variable_to_string(4), self.name(), self.negated(), self.geometryVariables))
+        print('\nVariableValue\n  Fixed = %s\n  Type = %s\n  Value = %f\n  FValue = %s\n  Name = %s\n  Negated = %s\n  Map = %s\n\n' %
+            (self.PYfixed, self.type(), self.compute(), self.variable_to_string(4), self.name(), self.negated(), self.geometryVariables))
 
 
 class CoordEntry(object):
@@ -371,6 +363,10 @@ class CoordEntry(object):
         """Returns shells sets to atom map"""
         return self.PYshells
 
+    def invalidate(self):
+        """Flags the current coordinates as being outdated."""
+        self.computed = False
+
     def everything(self):
         print('\nCoordEntry\n  Entry Number = %d\n  Computed = %s\n  Z = %d\n  Charge = %f\n  Mass = %f\n  Symbol = %s\n  Label = %s\n  A = %d\n  Ghosted = %s\n  Coordinates = %s\n  Basissets = %s\n\n  Shells = %s\n\n' %
             (self.entry_number(), self.is_computed(), self.Z(), self.charge(),
@@ -441,13 +437,6 @@ class CartesianEntry(CoordEntry):
         return " %17s %17s %17s\n" % (xstr, ystr, zstr)
         # should go to outfile
 
-    def invalidate(self):
-        """Flags the current coordinates as being outdated."""
-        self.computed = False
-        self.x.invalidate()
-        self.y.invalidate()
-        self.z.invalidate()
-
     def clone(self):
         """Returns new, independent CartesianEntry object"""
         return copy.deepcopy(self)
@@ -473,16 +462,6 @@ class ZMatrixEntry(CoordEntry):
         self.aval = aval
         self.dto = dto
         self.dval = dval
-
-    def invalidate(self):
-        """Flags the current coordinates as being outdated"""
-        self.computed = False
-        if self.rval != 0:
-            self.rval.invalidate()
-        if self.aval != 0:
-            self.aval.invalidate()
-        if self.dval != 0:
-            self.dval.invalidate()
 
     def print_in_input_format(self):
         """Prints the updated geometry, in the format provided by the user"""

@@ -3,7 +3,7 @@
 #
 # Psi4: an open-source quantum chemistry software package
 #
-# Copyright (c) 2007-2018 The Psi4 Developers.
+# Copyright (c) 2007-2019 The Psi4 Developers.
 #
 # The copyrights for code used from other parties are included in
 # the corresponding files.
@@ -28,8 +28,6 @@
 """
 List of GGA functionals
 """
-
-import copy
 
 funcs = []
 
@@ -211,7 +209,7 @@ funcs.append({
     "description": '   SOGGA11 Exchange-Correlation Functional\n',
 })
 
-# dashparam.dashcoeff now defines 'b97' (<-'b97-d') as Grimme's GGA
+# empirical_dispersion_resources.dashcoeff now defines 'b97' (<-'b97-d') as Grimme's GGA
 #   functional, so one could just define
 #       funcs.append({
 #            "name": "B97",
@@ -223,7 +221,6 @@ funcs.append({
 
 funcs.append({
     "name": "B97-D2",
-    "alias": ["B97-D"],
     "xc_functionals": {
         "GGA_XC_B97_D": {}
     },
@@ -238,8 +235,7 @@ funcs.append({
 })
 
 funcs.append({
-    "name": "B97-D3",
-    "alias": ["B97-D3ZERO"],
+    "name": "B97-D3ZERO",
     "xc_functionals": {
         "GGA_XC_B97_D": {}
     },
@@ -257,7 +253,6 @@ funcs.append({
 
 funcs.append({
     "name": "B97-D3BJ",
-    "alias": ["B97-D3(BJ)"],
     "xc_functionals": {
         "GGA_XC_B97_D": {}
     },
@@ -273,8 +268,7 @@ funcs.append({
 })
 
 funcs.append({
-    "name": "B97-D3M",
-    "alias": ["B97-D3MZERO"],
+    "name": "B97-D3MZERO",
     "xc_functionals": {
         "GGA_XC_B97_D": {}
     },
@@ -291,7 +285,6 @@ funcs.append({
 
 funcs.append({
     "name": "B97-D3MBJ",
-    "alias": ["B97-D3M(BJ)"],
     "xc_functionals": {
         "GGA_XC_B97_D": {}
     },

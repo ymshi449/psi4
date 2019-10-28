@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -76,8 +76,9 @@ RHF::RHF(SharedWavefunction ref_wfn, std::shared_ptr<SuperFunctional> func, Opti
 RHF::~RHF() {}
 
 void RHF::common_init() {
+    name_ = "RHF";
+
     if (multiplicity_ != 1) throw PSIEXCEPTION("RHF: RHF reference is only for singlets.");
-    Drms_ = 0.0;
 
     // Allocate matrix memory
     Fa_ = SharedMatrix(factory_->create_matrix("F"));
@@ -231,7 +232,12 @@ double RHF::compute_orbital_gradient(bool save_fock, int max_diis_vectors) {
         }
         diis_manager_->add_entry(2, gradient.get(), Fa_.get());
     }
-    return gradient->rms();
+
+    if (options_.get_bool("DIIS_RMS_ERROR")) {
+        return gradient->rms();
+    } else {
+        return gradient->absmax();
+    }
 }
 
 bool RHF::diis() { return diis_manager_->extrapolate(1, Fa_.get()); }
@@ -383,10 +389,10 @@ std::vector<SharedMatrix> RHF::onel_Hx(std::vector<SharedMatrix> x_vec) {
             Cv = Cvir_so;
         }
 
-        SharedMatrix tmp1 = Matrix::triplet(Co, F, Co, true, false, false);
-        SharedMatrix result = Matrix::doublet(tmp1, x_vec[i], false, false);
+        SharedMatrix tmp1 = linalg::triplet(Co, F, Co, true, false, false);
+        SharedMatrix result = linalg::doublet(tmp1, x_vec[i], false, false);
 
-        SharedMatrix tmp2 = Matrix::triplet(x_vec[i], Cv, F, false, true, false);
+        SharedMatrix tmp2 = linalg::triplet(x_vec[i], Cv, F, false, true, false);
         result->gemm(false, false, -1.0, tmp2, Cv, 1.0);
 
         ret.push_back(result);
@@ -449,7 +455,7 @@ std::vector<SharedMatrix> RHF::twoel_Hx(std::vector<SharedMatrix> x_vec, bool co
         }
 
         Cl.push_back(Co);
-        SharedMatrix R = Matrix::doublet(Cv, x_vec[i], false, true);
+        SharedMatrix R = linalg::doublet(Cv, x_vec[i], false, true);
         R->scale(-1.0);
         Cr.push_back(R);
     }
@@ -465,7 +471,7 @@ std::vector<SharedMatrix> RHF::twoel_Hx(std::vector<SharedMatrix> x_vec, bool co
     if (functional_->needs_xc()) {
         std::vector<SharedMatrix> Dx;
         for (size_t i = 0; i < x_vec.size(); i++) {
-            Dx.push_back(Matrix::doublet(Cl[i], Cr[i], false, true));
+            Dx.push_back(linalg::doublet(Cl[i], Cr[i], false, true));
             Vx.push_back(std::make_shared<Matrix>("Vx Temp", Dx[i]->rowspi(), Dx[i]->colspi()));
         }
         potential_->compute_Vx(Dx, Vx);
@@ -497,18 +503,24 @@ std::vector<SharedMatrix> RHF::twoel_Hx(std::vector<SharedMatrix> x_vec, bool co
         }
     } else {
         for (size_t i = 0; i < x_vec.size(); i++) {
+            // always have a J-like piece (optionally include Xc)
+            if (functional_->needs_xc()) {
+                J[i]->add(Vx[i]);
+            }
             ret.push_back(J[i]);
+            // may have K^HF
             if (functional_->is_x_hybrid()) {
                 K[i]->scale(alpha);
-                ret.push_back(K[i]);
+                // may have K^HF + wK
                 if (functional_->is_x_lrc()) {
-                    wK[i]->scale(beta);
-                    ret.push_back(wK[i]);
+                    K[i]->axpy(beta, wK[i]);
                 }
-            }
-            if (functional_->needs_xc()) {
-                ret.push_back(Vx[i]);
-            }
+                ret.push_back(K[i]);
+                // could also have just wK
+            } else if (functional_->is_x_lrc()) {
+                wK[i]->scale(beta);
+                ret.push_back(wK[i]);
+            }  // also may have not k-like piece
         }
     }
 
@@ -518,9 +530,9 @@ std::vector<SharedMatrix> RHF::twoel_Hx(std::vector<SharedMatrix> x_vec, bool co
     } else if (return_basis == "MO") {
         for (size_t i = 0; i < ret.size(); i++) {
             if (c1_input_[i]) {
-                ret[i] = Matrix::triplet(Cocc_ao, ret[i], Cvir_ao, true, false, false);
+                ret[i] = linalg::triplet(Cocc_ao, ret[i], Cvir_ao, true, false, false);
             } else {
-                ret[i] = Matrix::triplet(Cocc_so, ret[i], Cvir_so, true, false, false);
+                ret[i] = linalg::triplet(Cocc_so, ret[i], Cvir_so, true, false, false);
             }
         }
     } else {
@@ -570,7 +582,7 @@ std::vector<SharedMatrix> RHF::cphf_solve(std::vector<SharedMatrix> x_vec, doubl
         // MO (C1) Fock Matrix (Inactive Fock in Helgaker's language)
         SharedMatrix Cocc_ao = Ca_subset("AO", "ALL");
         SharedMatrix F_ao = matrix_subset_helper(Fa_, Ca_, "AO", "Fock");
-        SharedMatrix IFock_ao = Matrix::triplet(Cocc_ao, F_ao, Cocc_ao, true, false, false);
+        SharedMatrix IFock_ao = linalg::triplet(Cocc_ao, F_ao, Cocc_ao, true, false, false);
         Precon_ao = std::make_shared<Matrix>("Precon", nalpha_, nmo_ - nalpha_);
 
         double* denomp = Precon_ao->pointer()[0];
@@ -586,7 +598,7 @@ std::vector<SharedMatrix> RHF::cphf_solve(std::vector<SharedMatrix> x_vec, doubl
     if (needs_so) {
         // MO Fock Matrix (Inactive Fock in Helgaker's language)
         Dimension virpi = nmopi_ - nalphapi_;
-        SharedMatrix IFock_so = Matrix::triplet(Ca_, Fa_, Ca_, true, false, false);
+        SharedMatrix IFock_so = linalg::triplet(Ca_, Fa_, Ca_, true, false, false);
         Precon_so = std::make_shared<Matrix>("Precon", nirrep_, doccpi_, virpi);
 
         for (size_t h = 0; h < nirrep_; h++) {
@@ -649,7 +661,7 @@ std::vector<SharedMatrix> RHF::cphf_solve(std::vector<SharedMatrix> x_vec, doubl
         if (resid_denom[i] < 1.e-14) {
             resid_denom[i] = 1.e-14;  // Prevent rel denom from being too small
         }
-        rms[i] = sqrt(resid[i] / resid_denom[i]);
+        rms[i] = std::sqrt(resid[i] / resid_denom[i]);
         mean_rms += rms[i];
         if (rms[i] > max_rms) {
             max_rms = rms[i];
@@ -703,7 +715,7 @@ std::vector<SharedMatrix> RHF::cphf_solve(std::vector<SharedMatrix> x_vec, doubl
             double alpha = rzpre[i] / p_vec[i]->vector_dot(Ap_vec[nremain]);
 
             if (std::isnan(alpha)) {
-                outfile->Printf("RHF::CPHF Warning CG alpha is zero/nan for vec %d. Stopping vec.\n", i);
+                outfile->Printf("RHF::CPHF Warning CG alpha is zero/nan for vec %lu. Stopping vec.\n", i);
                 active[i] = false;
                 alpha = 0.0;
             }
@@ -714,7 +726,7 @@ std::vector<SharedMatrix> RHF::cphf_solve(std::vector<SharedMatrix> x_vec, doubl
 
             // Get residual
             resid[i] = r_vec[i]->sum_of_squares();
-            rms[i] = sqrt(resid[i] / resid_denom[i]);
+            rms[i] = std::sqrt(resid[i] / resid_denom[i]);
             if (rms[i] > max_rms) {
                 max_rms = rms[i];
             }
@@ -796,7 +808,7 @@ int RHF::soscf_update(double soscf_conv, int soscf_min_iter, int soscf_max_iter,
     SharedMatrix Cvir = Ca_subset("SO", "VIR");
 
     // Gradient RHS
-    SharedMatrix Gradient = Matrix::triplet(Cocc, Fa_, Cvir, true, false, false);
+    SharedMatrix Gradient = linalg::triplet(Cocc, Fa_, Cvir, true, false, false);
 
     // Make sure the MO gradient is reasonably small
     if (Gradient->absmax() > 0.3) {

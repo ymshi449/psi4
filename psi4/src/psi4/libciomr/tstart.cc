@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -64,7 +64,7 @@ double user_stop, sys_stop;
 **
 ** \ingroup CIOMR
 */
-void tstart() {
+void PSI_API tstart() {
     int error;
     char *name;
     struct tms total_tmstime;
@@ -100,7 +100,7 @@ void tstart() {
 **
 ** \ingroup CIOMR
 */
-void tstop() {
+void PSI_API tstop() {
     int error;
     std::time_t total_time;
     std::time_t total_time_overall;

@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -68,7 +68,7 @@ class BasisSet;
 // Only include the following function if Doxygen is running to generate appropriate
 // documentation.
 #ifdef DOXYGEN
-class TwoBodySOIntFunctor {
+class PSI_API TwoBodySOIntFunctor {
    public:
     void operator()(int pirrep, int pso, int qirrep, int qso, int rirrep, int rso, int sirrep, int sso, double value);
 };

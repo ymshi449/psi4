@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -102,7 +102,7 @@ std::shared_ptr<Matrix> Localizer::fock_update(std::shared_ptr<Matrix> Fc) {
 
     if (nmo < 1) return Fc;
 
-    std::shared_ptr<Matrix> Fl = Matrix::triplet(U_, Fc, U_, true, false, false);
+    std::shared_ptr<Matrix> Fl = linalg::triplet(U_, Fc, U_, true, false, false);
     double** Fp = Fl->pointer();
     double** Lp = L_->pointer();
     double** Up = U_->pointer();

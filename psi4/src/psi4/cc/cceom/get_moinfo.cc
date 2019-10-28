@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -44,6 +44,8 @@
 #define EXTERN
 #include "globals.h"
 
+#include <cctype> 
+
 namespace psi {
 namespace cceom {
 
@@ -68,9 +70,9 @@ void get_moinfo(std::shared_ptr<Wavefunction> wfn) {
     moinfo.irr_labs = wfn->molecule()->irrep_labels();
     moinfo.enuc = wfn->molecule()->nuclear_repulsion_energy(wfn->get_dipole_field_strength());
     if (wfn->reference_wavefunction())
-        moinfo.escf = wfn->reference_wavefunction()->reference_energy();
+        moinfo.escf = wfn->reference_wavefunction()->energy();
     else
-        moinfo.escf = wfn->reference_energy();
+        moinfo.escf = wfn->energy();
 
     moinfo.sopi = init_int_array(moinfo.nirreps);
     moinfo.orbspi = init_int_array(moinfo.nirreps);
@@ -92,11 +94,9 @@ void get_moinfo(std::shared_ptr<Wavefunction> wfn) {
 
     moinfo.irr_labs_lowercase = (char **)malloc(sizeof(char *) * nirreps);
     for (i = 0; i < nirreps; i++) {
-        moinfo.irr_labs_lowercase[i] = (char *)malloc(4 * sizeof(char));
-        moinfo.irr_labs_lowercase[i][0] = std::tolower(moinfo.irr_labs[i][0]);
-        moinfo.irr_labs_lowercase[i][1] = std::tolower(moinfo.irr_labs[i][1]);
-        moinfo.irr_labs_lowercase[i][2] = std::tolower(moinfo.irr_labs[i][2]);
-        moinfo.irr_labs_lowercase[i][3] = '\0';
+        moinfo.irr_labs_lowercase[i] = ::strdup(moinfo.irr_labs[i].c_str());
+        for (j = 0; j < ::strlen(moinfo.irr_labs_lowercase[i]); ++j)
+            moinfo.irr_labs_lowercase[i][j] = std::tolower(moinfo.irr_labs_lowercase[i][j]);
     }
 
     psio_read_entry(PSIF_CC_INFO, "Reference Wavefunction", (char *)&(params.ref), sizeof(int));
@@ -182,7 +182,7 @@ void get_moinfo(std::shared_ptr<Wavefunction> wfn) {
             if (moinfo.sopi[h] && moinfo.virtpi[h]) {
                 C[h] = block_matrix(moinfo.sopi[h], moinfo.virtpi[h]);
                 psio_read(PSIF_CC_INFO, "RHF/ROHF Active Virtual Orbitals", (char *)C[h][0],
-                          moinfo.sopi[h] * moinfo.virtpi[h] * sizeof(double), next, &next);
+                          sizeof(double) * moinfo.sopi[h] * moinfo.virtpi[h], next, &next);
             }
         }
         moinfo.C = C;
@@ -194,7 +194,7 @@ void get_moinfo(std::shared_ptr<Wavefunction> wfn) {
             if (moinfo.sopi[h] && moinfo.avirtpi[h]) {
                 Ca[h] = block_matrix(moinfo.sopi[h], moinfo.avirtpi[h]);
                 psio_read(PSIF_CC_INFO, "UHF Active Alpha Virtual Orbs", (char *)Ca[h][0],
-                          moinfo.sopi[h] * moinfo.avirtpi[h] * sizeof(double), next, &next);
+                          sizeof(double) * moinfo.sopi[h] * moinfo.avirtpi[h], next, &next);
             }
         }
         moinfo.Ca = Ca;
@@ -205,7 +205,7 @@ void get_moinfo(std::shared_ptr<Wavefunction> wfn) {
             if (moinfo.sopi[h] && moinfo.bvirtpi[h]) {
                 Cb[h] = block_matrix(moinfo.sopi[h], moinfo.bvirtpi[h]);
                 psio_read(PSIF_CC_INFO, "UHF Active Beta Virtual Orbs", (char *)Cb[h][0],
-                          moinfo.sopi[h] * moinfo.bvirtpi[h] * sizeof(double), next, &next);
+                          sizeof(double) * moinfo.sopi[h] * moinfo.bvirtpi[h], next, &next);
             }
         }
         moinfo.Cb = Cb;

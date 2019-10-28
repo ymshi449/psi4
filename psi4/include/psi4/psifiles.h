@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -293,6 +293,9 @@
 #define PSIF_DFOCC_TEMP          282  /*- DFOCC temporary storage -*/
 
 #define PSIF_SAD                 300  /*- A SAD file (File for SAD related quantities -*/
+
+#define PSIF_DCT_DPD             400 /*- DCT DPD handle -*/
+#define PSIF_DCT_DENSITY         401 /*- DCT density -*/
 
 // All of these one-electron quantities have been moved into PSIF_OEI Most integrals are real Hermitian hence only lower
 //  triangle of the matrix is written out

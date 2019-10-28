@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -71,9 +71,6 @@ bool from_string(T &t, const std::string &s, std::ios_base &(*f)(std::ios_base &
 }
 }  // namespace
 
-// used by 'if_to_invert_axis' and 'inertia_tensor'
-#define ZERO 1.0E-14
-
 namespace psi {
 
 std::regex realNumber_(
@@ -87,7 +84,7 @@ std::smatch reMatches_;
  * Interprets a string as an integer, throwing if it's unsuccesful.
  */
 int str_to_int(const std::string &s) {
-    int i;
+    int i = 0;
     std::istringstream iss(s);
     if ((iss >> std::dec >> i).fail()) throw PSIEXCEPTION("Unable to convert " + s + " to an integer");
     return i;
@@ -97,7 +94,7 @@ int str_to_int(const std::string &s) {
  * Interprets a string as an double, throwing if it's unsuccesful.
  */
 double str_to_double(const std::string &s) {
-    double d;
+    double d = 0;
     std::istringstream iss(s);
     if ((iss >> std::dec >> d).fail()) throw PSIEXCEPTION("Unable to convert " + s + " to a double");
     return d;
@@ -116,7 +113,7 @@ void if_to_invert_axis(const Vector3 &v1, int &must_invert, int &should_invert, 
     for (xyz = 0; xyz < 3; xyz++) {
         vabs = std::fabs(v1[xyz]);
 
-        if (vabs < ZERO) nzero++;
+        if (vabs < PSI_ZERO) nzero++;
 
         if (vabs > std::fabs(maxproj)) {
             maxproj = v1[xyz];
@@ -138,6 +135,7 @@ void if_to_invert_axis(const Vector3 &v1, int &must_invert, int &should_invert, 
 
 Molecule::Molecule()
     : name_("default"),
+      comment_(""),
       fix_orientation_(false),
       move_to_com_(true),
       molecular_charge_(0),
@@ -168,6 +166,7 @@ Molecule &Molecule::operator=(const Molecule &other) {
     if (this == &other) return *this;
 
     name_ = other.name_;
+    comment_ = other.comment_;
     all_variables_ = other.all_variables_;
     fragments_ = other.fragments_;
     fragment_charges_ = other.fragment_charges_;
@@ -194,6 +193,18 @@ Molecule &Molecule::operator=(const Molecule &other) {
     form_symmetry_information();
     full_pg_ = other.full_pg_;
     full_pg_n_ = other.full_pg_n_;
+
+    // Deep copy provenance
+    provenance_.clear();
+    for(auto kv: other.provenance_) {
+        provenance_[kv.first] = kv.second;
+    }
+
+    // Deep copy connectivity
+    connectivity_.clear();
+    for (auto conn: other.connectivity_) {
+        connectivity_.push_back(std::make_tuple(std::get<0>(conn), std::get<1>(conn), std::get<2>(conn)));
+    }
 
     // Deep copy the map of variables
     full_atoms_.clear();
@@ -320,6 +331,10 @@ void Molecule::add_unsettled_atom(double Z, std::vector<std::string> anchor, std
                                                              full_atoms_[dTo], dval));
     } else {
         throw PSIEXCEPTION("Illegal geometry specification (neither Cartesian nor Z-Matrix)");
+    }
+
+    if ((label != "X") && (label != "x")) {
+        atoms_.push_back(full_atoms_.back());
     }
 }
 
@@ -1334,7 +1349,7 @@ Matrix *Molecule::inertia_tensor() const {
     // Check the elements for zero and make them a hard zero.
     for (int i = 0; i < 3; ++i) {
         for (int j = 0; j < 3; ++j) {
-            if (std::fabs(tensor->get(i, j)) < ZERO) tensor->set(i, j, 0.0);
+            if (std::fabs(tensor->get(i, j)) < PSI_ZERO) tensor->set(i, j, 0.0);
         }
     }
 
@@ -1947,7 +1962,8 @@ std::shared_ptr<PointGroup> Molecule::find_point_group(double tol) const {
         int end = user.length() - 1;
 
         bool user_specified_direction = false;
-        // Did the user provide directionality? If they did, the last letter would be x, y, or z
+        // Did the user provide directionality? If they did, the last letter (not character) would be x, y, or z
+        end -= (user[end] == ')');
         if (user[end] == 'X' || user[end] == 'x' || user[end] == 'Y' || user[end] == 'y' || user[end] == 'Z' ||
             user[end] == 'z') {
             // Directionality given, assume the user is smart enough to know what they're doing.
@@ -2205,47 +2221,109 @@ std::vector<std::string> Molecule::irrep_labels() {
     return irreplabel;
 }
 
-Vector3 Molecule::xyz(int atom) const { return input_units_to_au_ * atoms_[atom]->compute(); }
+void Molecule::check_atom_(int atom, bool full) const {
+    if (full && atom >= full_atoms_.size()) {
+        throw std::runtime_error("Requested atom doesn't exist in full atoms list.");
+    }
+    if (not full && atom >= atoms_.size()) {
+        throw std::runtime_error("Requested atom doesn't exist in atoms list.");
+    }
+}
 
-Vector3 Molecule::fxyz(int atom) const { return input_units_to_au_ * full_atoms_[atom]->compute(); }
+Vector3 Molecule::xyz(int atom) const {
+    check_atom_(atom, false);
+    return input_units_to_au_ * atoms_[atom]->compute();
+}
 
-double Molecule::xyz(int atom, int _xyz) const { return input_units_to_au_ * atoms_[atom]->compute()[_xyz]; }
+Vector3 Molecule::fxyz(int atom) const {
+    check_atom_(atom, true);
+    return input_units_to_au_ * full_atoms_[atom]->compute();
+}
 
-const double &Molecule::Z(int atom) const { return atoms_[atom]->Z(); }
+double Molecule::xyz(int atom, int _xyz) const {
+    check_atom_(atom, false);
+    return input_units_to_au_ * atoms_[atom]->compute()[_xyz];
+}
 
-double Molecule::fZ(int atom) const { return full_atoms_[atom]->Z(); }
+const double &Molecule::Z(int atom) const {
+    check_atom_(atom, false);
+    return atoms_[atom]->Z();
+}
 
-double Molecule::x(int atom) const { return input_units_to_au_ * atoms_[atom]->compute()[0]; }
+double Molecule::fZ(int atom) const {
+    check_atom_(atom, true);
+    return full_atoms_[atom]->Z();
+}
 
-double Molecule::y(int atom) const { return input_units_to_au_ * atoms_[atom]->compute()[1]; }
+double Molecule::x(int atom) const {
+    check_atom_(atom, false);
+    return input_units_to_au_ * atoms_[atom]->compute()[0];
+}
 
-double Molecule::z(int atom) const { return input_units_to_au_ * atoms_[atom]->compute()[2]; }
+double Molecule::y(int atom) const {
+    check_atom_(atom, false);
+    return input_units_to_au_ * atoms_[atom]->compute()[1];
+}
 
-double Molecule::fx(int atom) const { return input_units_to_au_ * full_atoms_[atom]->compute()[0]; }
+double Molecule::z(int atom) const {
+    check_atom_(atom, false);
+    return input_units_to_au_ * atoms_[atom]->compute()[2];
+}
 
-double Molecule::fy(int atom) const { return input_units_to_au_ * full_atoms_[atom]->compute()[1]; }
+double Molecule::fx(int atom) const {
+    check_atom_(atom, true);
+    return input_units_to_au_ * full_atoms_[atom]->compute()[0];
+}
 
-double Molecule::fz(int atom) const { return input_units_to_au_ * full_atoms_[atom]->compute()[2]; }
+double Molecule::fy(int atom) const {
+    check_atom_(atom, true);
+    return input_units_to_au_ * full_atoms_[atom]->compute()[1];
+}
 
-double Molecule::charge(int atom) const { return atoms_[atom]->charge(); }
+double Molecule::fz(int atom) const {
+    check_atom_(atom, true);
+    return input_units_to_au_ * full_atoms_[atom]->compute()[2];
+}
 
-double Molecule::fcharge(int atom) const { return full_atoms_[atom]->charge(); }
+double Molecule::charge(int atom) const {
+    check_atom_(atom, false);
+    return atoms_[atom]->charge();
+}
 
-int Molecule::mass_number(int atom) const { return atoms_[atom]->A(); }
+double Molecule::fcharge(int atom) const {
+    check_atom_(atom, true);
+    return full_atoms_[atom]->charge();
+}
 
-int Molecule::fmass_number(int atom) const { return full_atoms_[atom]->A(); }
+int Molecule::mass_number(int atom) const {
+    check_atom_(atom, false);
+    return atoms_[atom]->A();
+}
 
-void Molecule::set_nuclear_charge(int atom, double newZ) { atoms_[atom]->set_nuclear_charge(newZ); }
+int Molecule::fmass_number(int atom) const {
+    check_atom_(atom, true);
+    return full_atoms_[atom]->A();
+}
 
-const std::string &Molecule::basis_on_atom(int atom) const { return atoms_[atom]->basisset(); }
+void Molecule::set_nuclear_charge(int atom, double newZ) {
+    check_atom_(atom, false);
+    atoms_[atom]->set_nuclear_charge(newZ);
+}
+
+const std::string &Molecule::basis_on_atom(int atom) const {
+    check_atom_(atom, false);
+    return atoms_[atom]->basisset();
+}
 
 int Molecule::true_atomic_number(int atom) const {
+    check_atom_(atom, false);
     Element_to_Z Z;
     Z.load_values();
     return (int)Z[atoms_[atom]->symbol()];
 }
 
 int Molecule::ftrue_atomic_number(int atom) const {
+    check_atom_(atom, true);
     Element_to_Z Z;
     Z.load_values();
     return (int)Z[full_atoms_[atom]->symbol()];
@@ -2285,11 +2363,20 @@ void Molecule::set_shell_by_label(const std::string &label, const std::string &n
     }
 }
 
-const std::shared_ptr<CoordEntry> &Molecule::atom_entry(int atom) const { return atoms_[atom]; }
+const std::shared_ptr<CoordEntry> &Molecule::atom_entry(int atom) const {
+    check_atom_(atom, false);
+    return atoms_[atom];
+}
 
-double Molecule::fmass(int atom) const { return full_atoms_[atom]->mass(); }
+double Molecule::fmass(int atom) const {
+    check_atom_(atom, true);
+    return full_atoms_[atom]->mass();
+}
 
-std::string Molecule::flabel(int atom) const { return full_atoms_[atom]->label(); }
+std::string Molecule::flabel(int atom) const {
+    check_atom_(atom, true);
+    return full_atoms_[atom]->label();
+}
 
 int Molecule::get_anchor_atom(const std::string &str, const std::string &line) {
     if (std::regex_match(str, reMatches_, integerNumber_)) {

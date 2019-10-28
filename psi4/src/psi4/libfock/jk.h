@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -240,6 +240,8 @@ class PSI_API JK {
     int omp_nthread_;
     /// Integral cutoff (defaults to 0.0)
     double cutoff_;
+    /// CSAM Screening (defaults to false)
+    double do_csam_;
     /// Whether to all desymmetrization, for cases when it's already been performed elsewhere
     std::vector<bool> input_symmetry_cast_map_;
 
@@ -366,6 +368,8 @@ class PSI_API JK {
 
     /// Do we need to backtransform to C1 under the hood?
     virtual bool C1() const = 0;
+    virtual std::string name() = 0;
+    virtual size_t memory_estimate() = 0;
 
     // => Knobs <= //
 
@@ -377,6 +381,13 @@ class PSI_API JK {
      *        ignored if possible
      */
     void set_cutoff(double cutoff) { cutoff_ = cutoff; }
+    double get_cutoff() const { return cutoff_; }
+    /**
+     * @param do_csam whether to perform CSAM screening instead of
+     *      classic Schwarz screening
+     */
+    void set_csam(bool do_csam) { do_csam_ = do_csam; }
+    double get_csam() const { return do_csam_; }
     /**
      * Maximum memory to use, in doubles (for tensor-based methods,
      * integral generation objects typically ignore this)
@@ -393,6 +404,8 @@ class PSI_API JK {
      *        run with their original maximum number)
      */
     void set_omp_nthread(int omp_nthread) { omp_nthread_ = omp_nthread; }
+    int get_omp_nthread() const { return omp_nthread_; }
+
     /// Print flag (defaults to 1)
     void set_print(int print) { print_ = print; }
     /// Debug flag (defaults to 0)
@@ -526,7 +539,10 @@ class PSI_API JK {
  * JK implementation using disk-based PK
  * integral technology
  */
-class DiskJK : public JK {
+class PSI_API DiskJK : public JK {
+    std::string name() override { return "DiskJK"; }
+    size_t memory_estimate() override;
+
     /// Absolute AO index to relative SO index
     int* so2index_;
     /// Absolute AO index to irrep
@@ -577,6 +593,10 @@ class DiskJK : public JK {
  * integral technology
  */
 class PSI_API PKJK : public JK {
+
+    std::string name() override { return "PKJK"; }
+    size_t memory_estimate() override;
+
     /// The PSIO instance to use for I/O
     std::shared_ptr<PSIO> psio_;
 
@@ -646,12 +666,15 @@ class PSI_API PKJK : public JK {
  * you have a high core-to-memory ratio. Clamp the
  * DF_INTS_NUM_THREADS value if this fate befalls you.
  */
-class DirectJK : public JK {
+class PSI_API DirectJK : public JK {
    protected:
     /// Number of threads for DF integrals TODO: DF_INTS_NUM_THREADS
     int df_ints_num_threads_;
     /// ERI Sieve
     std::shared_ptr<ERISieve> sieve_;
+
+    std::string name() override { return "DirectJK"; }
+    size_t memory_estimate() override;
 
     // => Required Algorithm-Specific Methods <= //
 
@@ -721,6 +744,9 @@ class GTFockJK : public JK {
     std::shared_ptr<MinimalInterface> Impl_;
     int NMats_ = 0;
 
+    std::string name() override { return "GTFockJK"; }
+    size_t memory_estimate() override;
+
    protected:
     /// Do we need to backtransform to C1 under the hood?
     bool C1() const override { return true; }
@@ -764,6 +790,9 @@ class GTFockJK : public JK {
 class PSI_API DiskDFJK : public JK {
    protected:
     // => DF-Specific stuff <= //
+
+    std::string name() override { return "DiskDFJK"; }
+    size_t memory_estimate() override;
 
     /// Auxiliary basis set
     std::shared_ptr<BasisSet> auxiliary_;
@@ -817,7 +846,7 @@ class PSI_API DiskDFJK : public JK {
     /// Common initialization
     void common_init();
 
-    bool is_core() const;
+    bool is_core();
     size_t memory_temp() const;
     int max_rows() const;
     int max_nocc() const;
@@ -906,8 +935,12 @@ class PSI_API DiskDFJK : public JK {
  * JK implementation using
  * cholesky decomposition technology
  */
-class CDJK : public DiskDFJK {
+class PSI_API CDJK : public DiskDFJK {
    protected:
+    std::string name() override { return "CDJK"; }
+    size_t memory_estimate() override;
+
+
     // the number of cholesky vectors
     long int ncholesky_;
 
@@ -955,9 +988,12 @@ class CDJK : public DiskDFJK {
  * under slightly different paradigm than DiskDFJK
  * wraps lib3index/DFHelper class
  */
-class MemDFJK : public JK {
+class PSI_API MemDFJK : public JK {
    protected:
     // => DF-Specific stuff <= //
+
+    std::string name() override { return "MemDFJK"; }
+    size_t memory_estimate() override;
 
     /// This class wraps a DFHelper object
     std::shared_ptr<DFHelper> dfh_;

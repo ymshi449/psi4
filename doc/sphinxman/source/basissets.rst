@@ -3,7 +3,7 @@
 .. #
 .. # Psi4: an open-source quantum chemistry software package
 .. #
-.. # Copyright (c) 2007-2018 The Psi4 Developers.
+.. # Copyright (c) 2007-2019 The Psi4 Developers.
 .. #
 .. # The copyrights for code used from other parties are included in
 .. # the corresponding files.
@@ -277,7 +277,9 @@ Request the new basis set in an input file in the usual manner. ::
 
 Prepare a basis set file exactly as above. Append the directory
 containing the basis set file to the environment variable
-:envvar:`PSIPATH`.
+:envvar:`PSIPATH`. If the directory is the current working directory,
+|PSIfour| will find it automatically, and the directory does not need
+to be added to :envvar:`PSIPATH`.
 
 Request the new basis set in an input file in the usual manner. ::
 

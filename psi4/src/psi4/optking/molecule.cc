@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -197,7 +197,7 @@ void MOLECULE::apply_constraint_forces() {
         H[cnt][cnt] = k;
 
         double force = (eq_val - val) * k;
-        oprintf_out("\tAdding user-defined constraint: Fragment %d; Coordinate %d:\n", f+1, i+1);
+        oprintf_out("\tAdding user-defined constraint: Fragment %zu; Coordinate %d:\n", f+1, i+1);
         oprintf_out("\t\tValue = %12.6f; Fixed value    = %12.6f\n", val, eq_val);
         oprintf_out("\t\tForce = %12.6f; Force constant = %12.6f\n", force, k);
         f_q[cnt] = force;

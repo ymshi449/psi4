@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -56,5 +56,7 @@ void export_options(py::module& m) {
         .def("set_read_globals", &Options::set_read_globals, "expert")
         .def("set_current_module", &Options::set_current_module, "sets *arg0* (all CAPS) as current module")
         .def("get_current_module", &Options::get_current_module, "gets current module")
-        .def("validate_options", &Options::validate_options, "validate options for *arg0* module");
+        .def("validate_options", &Options::validate_options, "validate options for *arg0* module")
+        .def("print_module_options", &Options::print, "print global and local options prepared for current module")
+        .def("print_global_options", &Options::print_globals, "print the global, cross-module options");
 }

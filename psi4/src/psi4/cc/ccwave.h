@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -52,8 +52,9 @@ class CCEnergyWavefunction : public Wavefunction {
    public:
     CCEnergyWavefunction(std::shared_ptr<Wavefunction> reference_wavefunction, Options &options);
     ~CCEnergyWavefunction() override;
-
     double compute_energy() override;
+
+    std::map<std::string, SharedMatrix> get_amplitudes();
 
    private:
     /* setup, info and teardown */

@@ -3,7 +3,7 @@
 #
 # Psi4: an open-source quantum chemistry software package
 #
-# Copyright (c) 2007-2018 The Psi4 Developers.
+# Copyright (c) 2007-2019 The Psi4 Developers.
 #
 # The copyrights for code used from other parties are included in
 # the corresponding files.
@@ -26,9 +26,6 @@
 # @END LICENSE
 #
 
-from __future__ import absolute_import
-from __future__ import print_function
-from __future__ import division
 import os
 import sys
 import hashlib
@@ -44,8 +41,6 @@ from .libmintsgshell import ShellInfo
 from .libmintsbasissetparser import Gaussian94BasisSetParser
 from .basislist import corresponding_basis, corresponding_zeta
 
-if sys.version_info >= (3,0):
-    basestring = str
 
 basishorde = {}
 
@@ -139,12 +134,12 @@ class BasisSet(object):
             isinstance(args[1], int):
             self.constructor_basisset_center(*args)
         elif len(args) == 3 and \
-            isinstance(args[0], basestring) and \
+            isinstance(args[0], str) and \
             isinstance(args[1], Molecule) and \
             isinstance(args[2], collections.OrderedDict):
             self.constructor_role_mol_shellmap(*args)
         elif len(args) == 4 and \
-            isinstance(args[0], basestring) and \
+            isinstance(args[0], str) and \
             isinstance(args[1], Molecule) and \
             isinstance(args[2], collections.OrderedDict) and \
             isinstance(args[3], bool):
@@ -194,7 +189,7 @@ class BasisSet(object):
 
         # Add a dummy atom at the origin, to hold this basis function
         self.molecule = Molecule()
-        self.molecule.add_atom(0, 0.0, 0.0, 0.0)
+        self.molecule.add_atom(0, 0.0, 0.0, 0.0, 'X')
         # Fill with data representing a single S function, at the origin, with 0 exponent
         self.n_uprimitive = 1
         self.n_shells = 1
@@ -654,7 +649,7 @@ class BasisSet(object):
         elif orb in basishorde:
             basstrings['BASIS'] = basishorde[orb](mol, 'BASIS')
             callby = orb
-        elif isinstance(orb, basestring):
+        elif isinstance(orb, str):
             mol.set_basis_all_atoms(orb, role='BASIS')
             callby = orb
         else:
@@ -666,7 +661,7 @@ class BasisSet(object):
             elif callable(aux):
                 basstrings[fitrole] = aux(mol, fitrole)
                 callby = aux.__name__.replace('basisspec_psi4_yo__', '')
-            elif isinstance(aux, basestring):
+            elif isinstance(aux, str):
                 mol.set_basis_all_atoms(aux, role=fitrole)
                 callby = aux
             else:
@@ -800,11 +795,11 @@ class BasisSet(object):
                     raise BasisSetNotDefined("""BasisSet::construct: No basis set specified for %s and %s.""" %
                         (symbol, key))
                 else:
-                    # No auxiliary basis set for atom, so try darnedest to find one.
+                    # No auxiliary / decon basis set for atom, so try darnedest to find one.
                     #   This involves querying the BasisFamily for default and
                     #   default-default and finally the universal default (defined
                     #   in this function). Since user hasn't indicated any specifics,
-                    #   look only in Psi4's library and for symbol only, not label.
+                    #   look for symbol only, not label.
                     tmp = []
                     tmp.append(corresponding_basis(basdict['BASIS'], deffit))
                     #NYI#tmp.append(corresponding_basis(basdict['BASIS'], deffit + '-DEFAULT'))
@@ -813,7 +808,7 @@ class BasisSet(object):
                         tmp.append(univdef[deffit])
                     seek['basis'] = [item for item in tmp if item != (None, None, None)]
                     seek['entry'] = [symbol]
-                    seek['path'] = libraryPath
+                    seek['path'] = basisPath
                     seek['strings'] = ''
             else:
                 # User (I hope ... dratted has_changed) has set basis for atom,
@@ -948,7 +943,7 @@ class BasisSet(object):
         text += '\n'
 
         if return_atomlist:
-            return atom_basis_list, text, None
+            return atom_basis_list, text, ecpbasisset
         else:
             return basisset, text, ecpbasisset
 
@@ -1081,7 +1076,7 @@ class BasisSet(object):
             si += self.center_to_shell[center]
         if si < 0 or si > self.nshell():
             text = """BasisSet::shell(si = %d), requested a shell out-of-bound.\n   Max shell size: %d\n   Name: %s\n""" % \
-                (si, self.nshell(), self.name())
+                (si, self.nshell(), self.name)
             raise ValidationError("BasisSet::shell: requested shell is out-of-bounds:\n%s" % (text))
         return self.shells[si]
 

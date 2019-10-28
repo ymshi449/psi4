@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -68,7 +68,7 @@ CUHF::CUHF(SharedWavefunction ref_wfn, std::shared_ptr<SuperFunctional> func, Op
 CUHF::~CUHF() {}
 
 void CUHF::common_init() {
-    Drms_ = 0.0;
+    name_ = "CUHF";
 
     Fa_ = SharedMatrix(factory_->create_matrix("F alpha"));
     Fb_ = SharedMatrix(factory_->create_matrix("F beta"));
@@ -202,9 +202,22 @@ void CUHF::compute_spin_contamination() {
     outfile->Printf("  @S^2 Observed:              %8.5F\n", S2 + dS);
 }
 
-void CUHF::form_initialF() {
+void CUHF::form_initial_F() {
+    // Form the initial Fock matrix to get initial orbitals
+    Fp_->copy(J_);
+    Fp_->scale(2.0);
+    Fp_->subtract(Ka_);
+    Fp_->subtract(Kb_);
+    Fp_->scale(0.5);
+
     Fa_->copy(H_);
-    Fb_->copy(H_);
+    for (const auto& Vext : external_potentials_) {
+        Fa_->add(Vext);
+    }
+    Fa_->add(Fp_);
+
+    // Just reuse alpha for beta
+    Fb_->copy(Fa_);
 
     if (debug_) {
         outfile->Printf("Initial Fock alpha matrix:\n");
@@ -277,10 +290,16 @@ void CUHF::form_F() {
 
     // Build the modified alpha and beta Fock matrices
     Fa_->copy(H_);
+    for (const auto& Vext : external_potentials_) {
+        Fa_->add(Vext);
+    }
     Fa_->add(Fp_);
     Fa_->add(Fm_);
 
     Fb_->copy(H_);
+    for (const auto& Vext : external_potentials_) {
+        Fb_->add(Vext);
+    }
     Fb_->add(Fp_);
     Fb_->subtract(Fm_);
 
@@ -331,12 +350,16 @@ void CUHF::form_D() {
     }
 }
 
-// TODO: Once Dt_ is refactored to D_ the only difference between this and RHF::compute_initial_E is a factor of 0.5
-double CUHF::compute_initial_E() { return nuclearrep_ + 0.5 * (Dt_->vector_dot(H_)); }
+double CUHF::compute_initial_E() { return nuclearrep_ + Dt_->vector_dot(H_); }
 
 double CUHF::compute_E() {
-    double one_electron_E = Dt_->vector_dot(H_);
-    double two_electron_E = 0.5 * (Da_->vector_dot(Fa_) + Db_->vector_dot(Fb_) - one_electron_E);
+    double DH = Dt_->vector_dot(H_);
+    double DFa = Da_->vector_dot(Fa_);
+    double DFb = Db_->vector_dot(Fb_);
+
+    double one_electron_E = DH;
+    double two_electron_E = 0.5 * (DFa + DFb - one_electron_E);
+    double Eelec = 0.5 * (DH + DFa + DFb);
 
     energies_["Nuclear"] = nuclearrep_;
     energies_["One-Electron"] = one_electron_E;
@@ -345,10 +368,6 @@ double CUHF::compute_E() {
     energies_["VV10_E"] = 0.0;
     energies_["-D"] = 0.0;
 
-    double DH = Dt_->vector_dot(H_);
-    double DFa = Da_->vector_dot(Fa_);
-    double DFb = Db_->vector_dot(Fb_);
-    double Eelec = 0.5 * (DH + DFa + DFb);
     // outfile->Printf( "electronic energy = %20.14f\n", Eelec);
     double Etotal = nuclearrep_ + Eelec;
     return Etotal;
@@ -357,9 +376,6 @@ double CUHF::compute_E() {
 double CUHF::compute_orbital_gradient(bool save_diis, int max_diis_vectors) {
     SharedMatrix grad_a = form_FDSmSDF(Fa_, Da_);
     SharedMatrix grad_b = form_FDSmSDF(Fb_, Db_);
-
-    // Store the RMS gradient for convergence checking
-    double Drms = 0.5 * (grad_a->rms() + grad_b->rms());
 
     if (save_diis) {
         if (initialized_diis_manager_ == false) {
@@ -372,7 +388,11 @@ double CUHF::compute_orbital_gradient(bool save_diis, int max_diis_vectors) {
 
         diis_manager_->add_entry(4, grad_a.get(), grad_b.get(), Fa_.get(), Fb_.get());
     }
-    return Drms;
+
+    if (options_.get_bool("DIIS_RMS_ERROR"))
+        return std::sqrt(0.5 * (std::pow(grad_a->rms(), 2) + std::pow(grad_b->rms(), 2)));
+    else
+        return std::max(grad_a->absmax(), grad_b->absmax());
 }
 
 bool CUHF::diis() { return diis_manager_->extrapolate(2, Fa_.get(), Fb_.get()); }
@@ -402,6 +422,16 @@ std::shared_ptr<CUHF> CUHF::c1_deep_copy(std::shared_ptr<BasisSet> basis) {
     if (X_) hf_wfn->X_->remove_symmetry(X_, SO2AO);
 
     return hf_wfn;
+}
+
+void CUHF::compute_SAD_guess(bool natorb) {
+    // Form the SAD guess
+    HF::compute_SAD_guess(natorb);
+    if (!natorb) {
+        // Form the total density used in energy evaluation
+        Dt_->copy(Da_);
+        Dt_->add(Db_);
+    }
 }
 }  // namespace scf
 }  // namespace psi

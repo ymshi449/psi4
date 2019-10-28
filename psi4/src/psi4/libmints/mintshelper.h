@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -244,10 +244,15 @@ class PSI_API MintsHelper {
     /// Vector AO Traceless Quadrupole Integrals
     std::vector<SharedMatrix> ao_traceless_quadrupole();
     /// AO EFP Multipole Potential Integrals
-    std::vector<SharedMatrix> ao_efp_multipole_potential(const std::vector<double>& origin = {0., 0., 0.},
-                                                         int deriv = 0);
+    std::vector<SharedMatrix> ao_efp_multipole_potential(const std::vector<double>& origin = {0., 0., 0.}, int deriv = 0);
+    // AO EFP Multipole Potential Integrals
+    std::vector<SharedMatrix> ao_multipole_potential(const std::vector<double>& origin = {0., 0., 0.}, int max_k = 0, int deriv = 0);
     /// Electric Field Integrals
     std::vector<SharedMatrix> electric_field(const std::vector<double>& origin = {0., 0., 0.}, int deriv = 0);
+    /// Induction Operator for dipole moments at given sites
+    SharedMatrix induction_operator(SharedMatrix coords, SharedMatrix moment);
+    /// Electric Field Value at given sites
+    SharedMatrix electric_field_value(SharedMatrix coords, SharedMatrix D);
     /// Vector AO Angular Momentum Integrals
     std::vector<SharedMatrix> ao_angular_momentum();
     /// Vector AO Nabla Integrals
@@ -286,8 +291,8 @@ class PSI_API MintsHelper {
 
     SharedMatrix kinetic_grad(SharedMatrix D);
     SharedMatrix potential_grad(SharedMatrix D);
+    SharedMatrix dipole_grad(SharedMatrix D);
     SharedMatrix perturb_grad(SharedMatrix D);
-    SharedMatrix perturb_grad(SharedMatrix D, double xlambda, double ylambda, double zlambda);
 
     /// Play function
     void play();

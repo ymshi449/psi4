@@ -3,7 +3,7 @@
 #
 # Psi4: an open-source quantum chemistry software package
 #
-# Copyright (c) 2007-2018 The Psi4 Developers.
+# Copyright (c) 2007-2019 The Psi4 Developers.
 #
 # The copyrights for code used from other parties are included in
 # the corresponding files.
@@ -27,8 +27,6 @@
 #
 
 """Module with functions that interface with Grimme's GCP code."""
-from __future__ import absolute_import
-from __future__ import print_function
 import os
 import re
 import uuid
@@ -68,7 +66,7 @@ def run_gcp(self, func=None, dertype=None, verbose=False):  # dashlvl=None, dash
     elif isinstance(self, core.Molecule):
         # called on a python export of a psi4.core.Molecule (py-side through Psi4's driver)
         self.create_psi4_string_from_molecule()
-    elif isinstance(self, basestring):
+    elif isinstance(self, str):
         # called on a string representation of a psi4.Molecule (c-side through psi4.Dispersion)
         self = Molecule(self)
     else:
@@ -161,7 +159,7 @@ def run_gcp(self, func=None, dertype=None, verbose=False):  # dashlvl=None, dash
         gcp_tmpdir = 'psi.' + str(os.getpid()) + '.' + psio.get_default_namespace() + \
             '.gcp.' + str(uuid.uuid4())[:8]
     else:
-        gcp_tmpdir = os.environ['HOME'] + os.sep + 'gcp_' + str(uuid.uuid4())[:8]
+        gcp_tmpdir = os.path.expanduser('~') + os.sep + 'gcp_' + str(uuid.uuid4())[:8]
     if os.path.exists(gcp_tmpdir) is False:
         os.mkdir(gcp_tmpdir)
     os.chdir(gcp_tmpdir)

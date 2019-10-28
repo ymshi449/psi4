@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -97,6 +97,8 @@ class PKManager {
     Options& options_;
     /// Integral cutoff to apply
     double cutoff_;
+    /// CSAM Screening (defaults to false)
+    bool do_csam_;
     std::shared_ptr<BasisSet> primary_;
     int nthreads_;
     /// Number of basis functions

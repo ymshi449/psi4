@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -2207,9 +2207,9 @@ size_t TwoElectronInt::compute_shell(int sh1, int sh2, int sh3, int sh4) {
 #ifdef MINTS_TIMER
     timer_on("ERI::compute_shell");
 #endif
-    // Need to ensure the ordering asked by the user is valid for libint
-    // compute_quartet does NOT check this. SEGFAULTS should occur if order
-    // is not guaranteed.
+// Need to ensure the ordering asked by the user is valid for libint
+// compute_quartet does NOT check this. SEGFAULTS should occur if order
+// is not guaranteed.
 #ifdef MINTS_TIMER
     timer_on("reorder");
 #endif

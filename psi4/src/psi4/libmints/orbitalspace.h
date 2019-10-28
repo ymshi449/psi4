@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -45,7 +45,7 @@ class IntegralFactory;
  * matrix and possible orbital energies. Relavent basis set and integral factory
  * are also contained.
  */
-class OrbitalSpace {
+class PSI_API OrbitalSpace {
     /// Unique identifier
     std::string id_;
     /// Name of the orbital space.

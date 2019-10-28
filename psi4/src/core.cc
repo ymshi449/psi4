@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -67,6 +67,8 @@ int for_set_reentrancy(int*);
 }
 
 using namespace psi;
+namespace py = pybind11;
+using namespace pybind11::literals;
 
 // Python helper wrappers
 void export_benchmarks(py::module&);
@@ -107,8 +109,8 @@ std::shared_ptr<PsiOutStream> outfile;
 namespace adc {
 SharedWavefunction adc(SharedWavefunction, Options&);
 }
-namespace dcft {
-SharedWavefunction dcft(SharedWavefunction, Options&);
+namespace dct {
+SharedWavefunction dct(SharedWavefunction, Options&);
 }
 namespace detci {
 SharedWavefunction detci(SharedWavefunction, Options&);
@@ -165,19 +167,6 @@ namespace mrcc {
 PsiReturnType mrcc_generate_input(SharedWavefunction, Options&, const py::dict&);
 PsiReturnType mrcc_load_ccdensities(SharedWavefunction, Options&, const py::dict&);
 }  // namespace mrcc
-
-// Finite difference functions
-namespace findif {
-std::vector<SharedMatrix> fd_geoms_1_0(std::shared_ptr<Molecule>, Options&);
-std::vector<SharedMatrix> fd_geoms_freq_0(std::shared_ptr<Molecule>, Options&, int irrep);
-std::vector<SharedMatrix> fd_geoms_freq_1(std::shared_ptr<Molecule>, Options&, int irrep);
-std::vector<SharedMatrix> atomic_displacements(std::shared_ptr<Molecule>, Options&);
-
-SharedMatrix fd_1_0(std::shared_ptr<Molecule>, Options&, const py::list&);
-SharedMatrix fd_freq_0(std::shared_ptr<Molecule>, Options&, const py::list&, int irrep);
-SharedMatrix fd_freq_1(std::shared_ptr<Molecule>, Options&, const py::list&, int irrep);
-void displace_atom(SharedMatrix geom, const int atom, const int coord, const int sign, const double disp_size);
-}  // namespace findif
 
 // CC functions
 namespace cctransort {
@@ -290,11 +279,6 @@ SharedWavefunction py_psi_dfocc(SharedWavefunction ref_wfn) {
     return dfoccwave::dfoccwave(ref_wfn, Process::environment.options);
 }
 
-SharedWavefunction py_psi_libfock(SharedWavefunction ref_wfn) {
-    py_psi_prepare_options_for_module("CPHF");
-    return libfock::libfock(ref_wfn, Process::environment.options);
-}
-
 SharedWavefunction py_psi_mcscf(SharedWavefunction ref_wfn) {
     py_psi_prepare_options_for_module("MCSCF");
     return mcscf::mcscf(ref_wfn, Process::environment.options);
@@ -310,9 +294,9 @@ PsiReturnType py_psi_mrcc_load_densities(SharedWavefunction ref_wfn, const py::d
     return mrcc::mrcc_load_ccdensities(ref_wfn, Process::environment.options, level);
 }
 
-SharedWavefunction py_psi_dcft(SharedWavefunction ref_wfn) {
-    py_psi_prepare_options_for_module("DCFT");
-    return dcft::dcft(ref_wfn, Process::environment.options);
+SharedWavefunction py_psi_dct(SharedWavefunction ref_wfn) {
+    py_psi_prepare_options_for_module("DCT");
+    return dct::dct(ref_wfn, Process::environment.options);
 }
 
 SharedWavefunction py_psi_dfmp2(SharedWavefunction ref_wfn) {
@@ -517,11 +501,27 @@ bool specifies_convergence(std::string const& key) {
     return ((key.find("CONV") != key.npos) || (key.find("TOL") != key.npos));
 }
 
+// DCFT deprecation errors first added in 1.4. Feel free to retire after "enough" time. 
+void throw_deprecation_errors(std::string const& key, std::string const& module = "") {
+    if (module == "DCFT") {
+		throw PsiException("Rename local options block. All instances of 'dcft' should be replaced with 'dct'. The method was renamed in v1.4.", __FILE__, __LINE__);
+	}
+	if (key.find("DCFT") != std::string::npos) {
+		throw PsiException("Rename keyword " + key + ". All instances of 'dcft' should be replaced with 'dct'. The method was renamed in v1.4.", __FILE__, __LINE__);
+	}
+}
+
 Options& py_psi_get_options() { return Process::environment.options; }
 
 bool py_psi_set_local_option_string(std::string const& module, std::string const& key, std::string const& value) {
     std::string nonconst_key = to_upper(key);
+
+    throw_deprecation_errors(key, module);
+
+    std::string module_temp = Process::environment.options.get_current_module();
+    Process::environment.options.set_current_module(module);
     Data& data = Process::environment.options[nonconst_key];
+    Process::environment.options.set_current_module(module_temp);
 
     if (data.type() == "string") {
         Process::environment.options.set_str(module, nonconst_key, value);
@@ -540,7 +540,13 @@ bool py_psi_set_local_option_string(std::string const& module, std::string const
 
 bool py_psi_set_local_option_int(std::string const& module, std::string const& key, int value) {
     std::string nonconst_key = to_upper(key);
+    
+	throw_deprecation_errors(key, module);
+
+    std::string module_temp = Process::environment.options.get_current_module();
+    Process::environment.options.set_current_module(module);
     Data& data = Process::environment.options[nonconst_key];
+    Process::environment.options.set_current_module(module_temp);
 
     if (data.type() == "double") {
         double val = (specifies_convergence(nonconst_key)) ? pow(10.0, -value) : double(value);
@@ -558,13 +564,18 @@ bool py_psi_set_local_option_int(std::string const& module, std::string const& k
 bool py_psi_set_local_option_double(std::string const& module, std::string const& key, double value) {
     std::string nonconst_key = to_upper(key);
 
+	throw_deprecation_errors(key, module);
+
     Process::environment.options.set_double(module, nonconst_key, value);
     return true;
 }
 
 bool py_psi_set_global_option_string(std::string const& key, std::string const& value) {
     std::string nonconst_key = to_upper(key);
-    Data& data = Process::environment.options[nonconst_key];
+    
+	throw_deprecation_errors(key);
+
+	Data& data = Process::environment.options[nonconst_key];
 
     if (data.type() == "string" || data.type() == "istring") {
         Process::environment.options.set_global_str(nonconst_key, value);
@@ -581,6 +592,9 @@ bool py_psi_set_global_option_string(std::string const& key, std::string const& 
 
 bool py_psi_set_global_option_int(std::string const& key, int value) {
     std::string nonconst_key = to_upper(key);
+	
+	throw_deprecation_errors(key);
+
     Data& data = Process::environment.options[nonconst_key];
 
     if (data.type() == "double") {
@@ -598,6 +612,8 @@ bool py_psi_set_global_option_int(std::string const& key, int value) {
 
 bool py_psi_set_global_option_double(std::string const& key, double value) {
     std::string nonconst_key = to_upper(key);
+	
+	throw_deprecation_errors(key);
 
     Process::environment.options.set_global_double(nonconst_key, value);
     return true;
@@ -606,10 +622,16 @@ bool py_psi_set_global_option_double(std::string const& key, double value) {
 bool py_psi_set_local_option_array(std::string const& module, std::string const& key, const py::list& values,
                                    DataType* entry = nullptr) {
     std::string nonconst_key = to_upper(key);
+
+    throw_deprecation_errors(key, module);
+
     // Assign a new head entry on the first time around only
     if (entry == nullptr) {
         // We just do a cheesy "get" to make sure keyword is valid.  This get will throw if not.
+        std::string module_temp = Process::environment.options.get_current_module();
+        Process::environment.options.set_current_module(module);
         Data& data = Process::environment.options[nonconst_key];
+        Process::environment.options.set_current_module(module_temp);
         // This "if" statement is really just here to make sure the compiler doesn't optimize out the get, above.
         if (data.type() == "array") Process::environment.options.set_array(module, nonconst_key);
     }
@@ -625,12 +647,12 @@ bool py_psi_set_local_option_array(std::string const& module, std::string const&
             try {
                 std::string s = values[n].cast<std::string>();
                 Process::environment.options.set_local_array_string(module, nonconst_key, s, entry);
-            } catch (py::cast_error e) {
+            } catch (const py::cast_error& e) {
                 try {
                     // This is not a list or string; try to cast to an integer
                     int i = values[n].cast<int>();
                     Process::environment.options.set_local_array_int(module, nonconst_key, i, entry);
-                } catch (py::cast_error e) {
+                } catch (const py::cast_error& e) {
                     // This had better be castable to a float.  We don't catch the exception here
                     // because if we encounter one, something bad has happened
                     double f = values[n].cast<double>();
@@ -649,6 +671,9 @@ bool py_psi_set_local_option_array_wrapper(std::string const& module, std::strin
 
 bool py_psi_set_global_option_array(std::string const& key, py::list values, DataType* entry = nullptr) {
     std::string nonconst_key = to_upper(key);
+
+    throw_deprecation_errors(key);
+
     // Assign a new head entry on the first time around only
     if (entry == nullptr) {
         // We just do a cheesy "get" to make sure keyword is valid.  This get will throw if not.
@@ -668,12 +693,12 @@ bool py_psi_set_global_option_array(std::string const& key, py::list values, Dat
             try {
                 std::string s = values[n].cast<std::string>();
                 Process::environment.options.set_global_array_string(nonconst_key, s, entry);
-            } catch (py::cast_error e) {
+            } catch (const py::cast_error& e) {
                 try {
                     // This is not a list or string; try to cast to an integer
                     int i = values[n].cast<int>();
                     Process::environment.options.set_global_array_int(nonconst_key, i, entry);
-                } catch (py::cast_error e) {
+                } catch (const py::cast_error& e) {
                     // This had better be castable to a float.  We don't catch the exception here
                     // because if we encounter one, something bad has happened
                     double f = values[n].cast<double>();
@@ -843,15 +868,6 @@ void py_psi_set_legacy_molecule(std::shared_ptr<Molecule> legacy_molecule) {
     Process::environment.set_legacy_molecule(legacy_molecule);
 }
 
-void py_psi_set_parent_symmetry(std::string pg) {
-    std::shared_ptr<PointGroup> group = std::shared_ptr<PointGroup>();
-    if (pg != "") {
-        group = std::make_shared<PointGroup>(pg);
-    }
-
-    Process::environment.set_parent_symmetry(group);
-}
-
 std::shared_ptr<Molecule> py_psi_get_active_molecule() { return Process::environment.molecule(); }
 std::shared_ptr<Molecule> py_psi_get_legacy_molecule() { return Process::environment.legacy_molecule(); }
 
@@ -878,13 +894,13 @@ void py_psi_set_n_threads(size_t nthread, bool quiet) {
 #ifdef _OPENMP
     Process::environment.set_n_threads(nthread);
     if (!quiet) {
-        outfile->Printf("  Threads set to %d by Python driver.\n", nthread);
+        outfile->Printf("  Threads set to %zu by Python driver.\n", nthread);
     }
 #else
     Process::environment.set_n_threads(1);
     if (!quiet) {
         outfile->Printf(
-            "  Python driver attempted to set threads to %d.\n"
+            "  Python driver attempted to set threads to %zu.\n"
             "  Psi4 was compiled without OpenMP, setting threads to 1.\n",
             nthread);
     }
@@ -1045,26 +1061,25 @@ PYBIND11_MODULE(core, core) {
     core.def("set_legacy_wavefunction", py_psi_set_legacy_wavefunction,
              "Returns the current legacy_wavefunction object from the most recent computation.");
     core.def("get_legacy_gradient", py_psi_get_gradient,
-             "Returns the global gradient as a (nat, 3) :py:class:`~psi4.core.Matrix` object. FOR INTERNAL OPTKING USE ONLY.");
-    core.def("set_legacy_gradient", py_psi_set_gradient,
-             "Assigns the global gradient to the values in the (nat, 3) Matrix argument. FOR INTERNAL OPTKING USE ONLY.");
+             "Returns the global gradient as a (nat, 3) :py:class:`~psi4.core.Matrix` object. FOR INTERNAL OPTKING USE "
+             "ONLY.");
+    core.def(
+        "set_legacy_gradient", py_psi_set_gradient,
+        "Assigns the global gradient to the values in the (nat, 3) Matrix argument. FOR INTERNAL OPTKING USE ONLY.");
     core.def("get_atomic_point_charges", py_psi_get_atomic_point_charges,
              "Returns the most recently computed atomic point charges, as a double * object.");
-    core.def("set_memory_bytes", py_psi_set_memory, py::arg("memory"), py::arg("quiet") = false,
+    core.def("set_memory_bytes", py_psi_set_memory, "memory"_a, "quiet"_a = false,
              "Sets the memory available to Psi (in bytes).");
     core.def("get_memory", py_psi_get_memory, "Returns the amount of memory available to Psi (in bytes).");
     core.def("set_datadir", [](const std::string& pdd) { Process::environment.set_datadir(pdd); },
              "Returns the amount of memory available to Psi (in bytes).");
     core.def("get_datadir", []() { return Process::environment.get_datadir(); },
              "Sets the path to shared text resources, PSIDATADIR");
-    core.def("set_num_threads", py_psi_set_n_threads, py::arg("nthread"), py::arg("quiet") = false,
+    core.def("set_num_threads", py_psi_set_n_threads, "nthread"_a, "quiet"_a = false,
              "Sets the number of threads to use in SMP parallel computations.");
     core.def("get_num_threads", py_psi_get_n_threads,
              "Returns the number of threads to use in SMP parallel computations.");
     //    core.def("mol_from_file",&LibBabel::ParseFile,"Reads a molecule from another input file");
-    core.def("set_parent_symmetry", py_psi_set_parent_symmetry,
-             "Sets the symmetry of the 'parent' (undisplaced) geometry, by Schoenflies symbol, at the beginning of a "
-             "finite difference computation.");
     core.def("print_options", py_psi_print_options,
              "Prints the currently set options (to the output file) for the current module.");
     core.def("print_global_options", py_psi_print_global_options,
@@ -1138,24 +1153,34 @@ PYBIND11_MODULE(core, core) {
              "valid option for *arg0*.");
 
     // These return/set/print PSI variables found in Process::environment.globals
-    core.def("has_scalar_variable", [](const std::string& key) { return bool(Process::environment.globals.count(to_upper(key))); },
+    core.def("has_scalar_variable",
+             [](const std::string& key) { return bool(Process::environment.globals.count(to_upper(key))); },
              "Is the double QC variable (case-insensitive) set?");
-    core.def("has_array_variable", [](const std::string& key) { return bool(Process::environment.arrays.count(to_upper(key))); },
+    core.def("has_array_variable",
+             [](const std::string& key) { return bool(Process::environment.arrays.count(to_upper(key))); },
              "Is the Matrix QC variable (case-insensitive) set?");
     core.def("scalar_variable", [](const std::string& key) { return Process::environment.globals[to_upper(key)]; },
              "Returns the requested (case-insensitive) double QC variable.");
-    core.def("array_variable", [](const std::string& key) { return Process::environment.arrays[to_upper(key)]->clone(); },
+    core.def("array_variable",
+             [](const std::string& key) { return Process::environment.arrays[to_upper(key)]->clone(); },
              "Returns copy of the requested (case-insensitive) Matrix QC variable.");
-    core.def("set_scalar_variable", [](const std::string& key, double val) { Process::environment.globals[to_upper(key)] = val; },
+    core.def("set_scalar_variable",
+             [](const std::string& key, double val) { Process::environment.globals[to_upper(key)] = val; },
              "Sets the requested (case-insensitive) double QC variable.");
-    core.def("set_array_variable", [](const std::string& key, SharedMatrix val) { Process::environment.arrays[to_upper(key)] = val->clone(); },
-             "Sets the requested (case-insensitive) Matrix QC variable.");
+    core.def(
+        "set_array_variable",
+        [](const std::string& key, SharedMatrix val) { Process::environment.arrays[to_upper(key)] = val->clone(); },
+        "Sets the requested (case-insensitive) Matrix QC variable.");
     core.def("del_scalar_variable", [](const std::string key) { Process::environment.globals.erase(to_upper(key)); },
              "Removes the requested (case-insensitive) double QC variable.");
     core.def("del_array_variable", [](const std::string key) { Process::environment.arrays.erase(to_upper(key)); },
              "Removes the requested (case-insensitive) Matrix QC variable.");
     core.def("print_variables", py_psi_print_variable_map, "Prints all PSI variables that have been set internally.");
-    core.def("clean_variables", []() { Process::environment.globals.clear(); Process::environment.arrays.clear(); },
+    core.def("clean_variables",
+             []() {
+                 Process::environment.globals.clear();
+                 Process::environment.arrays.clear();
+             },
              "Empties all PSI scalar and array variables that have been set internally.");
     core.def("scalar_variables", []() { return Process::environment.globals; },
              "Returns dictionary of all double QC variables.");
@@ -1177,8 +1202,7 @@ PYBIND11_MODULE(core, core) {
     core.def("scfhess", py_psi_scfhess, "Run scfhess, which is a specialized DF-SCF hessian program.");
 
     // core.def("scf", py_psi_scf, "Runs the SCF code.");
-    core.def("dcft", py_psi_dcft, "Runs the density cumulant functional theory code.");
-    core.def("libfock", py_psi_libfock, "Runs a CPHF calculation, using libfock.");
+    core.def("dct", py_psi_dct, "Runs the density cumulant (functional) theory code.");
     core.def("dfmp2", py_psi_dfmp2, "Runs the DF-MP2 code.");
     core.def("mcscf", py_psi_mcscf, "Runs the MCSCF code, (N.B. restricted to certain active spaces).");
     core.def("mrcc_generate_input", py_psi_mrcc_generate_input, "Generates an input for Kallay's MRCC code.");

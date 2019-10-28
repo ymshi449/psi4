@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -116,9 +116,9 @@ PsiReturnType cctransort(SharedWavefunction ref, Options &options) {
     double enuc = ref->molecule()->nuclear_repulsion_energy(ref->get_dipole_field_strength());
     double escf;
     if (ref->reference_wavefunction()) {
-        escf = ref->reference_wavefunction()->reference_energy();
+        escf = ref->reference_wavefunction()->energy();
     } else {
-        escf = ref->reference_energy();
+        escf = ref->energy();
     }
     double epcm = 0.0;
 #ifdef USING_PCMSolver
@@ -127,6 +127,12 @@ PsiReturnType cctransort(SharedWavefunction ref, Options &options) {
                                              : ref->scalar_variable("PCM POLARIZATION ENERGY");
     }
 #endif
+
+    double epe = 0.0;
+    if (options.get_bool("PE")) {
+        epe = ref->reference_wavefunction() ? ref->reference_wavefunction()->scalar_variable("PE ENERGY")
+                                            : ref->scalar_variable("PE ENERGY");
+    }
 
     Dimension nmopi = ref->nmopi();
     Dimension nsopi = ref->nsopi();
@@ -706,7 +712,7 @@ PsiReturnType cctransort(SharedWavefunction ref, Options &options) {
 
     outfile->Printf("\tNuclear Rep. energy          =  %20.14f\n", enuc);
     outfile->Printf("\tSCF energy                   =  %20.14f\n", escf);
-    double eref = scf_check(reference, openpi) + enuc + efzc + epcm;
+    double eref = scf_check(reference, openpi) + enuc + efzc + epcm + epe;
     outfile->Printf("\tReference energy             =  %20.14f\n", eref);
     psio->write_entry(PSIF_CC_INFO, "Reference Energy", (char *)&(eref), sizeof(double));
 
@@ -751,7 +757,7 @@ PsiReturnType cctransort(SharedWavefunction ref, Options &options) {
         Slice asoc_col_slice(frzcpi + clsdpi, frzcpi + clsdpi + openpi);
         virandsoc.push_back(ref->Ca()->get_block(row_slice, avir_col_slice));
         virandsoc.push_back(ref->Ca()->get_block(row_slice, asoc_col_slice));
-        Ca_vir = Matrix::horzcat(virandsoc);
+        Ca_vir = linalg::horzcat(virandsoc);
         Ca_vir->set_name("Virtual orbitals");
 
         next = PSIO_ZERO;

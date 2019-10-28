@@ -3,7 +3,7 @@
 #
 # Psi4: an open-source quantum chemistry software package
 #
-# Copyright (c) 2007-2018 The Psi4 Developers.
+# Copyright (c) 2007-2019 The Psi4 Developers.
 #
 # The copyrights for code used from other parties are included in
 # the corresponding files.
@@ -28,8 +28,6 @@
 """Module with a *procedures* dictionary specifying available quantum
 chemical methods.
 """
-from __future__ import print_function
-from __future__ import absolute_import
 
 from . import sapt
 from . import proc
@@ -45,7 +43,7 @@ procedures = {
         'hf'            : proc.run_scf,
         'scf'           : proc.run_scf,
         'mcscf'         : proc.run_mcscf,
-        'dcft'          : proc.run_dcft,
+        'dct'           : proc.run_dct,
         'ep2'           : proc.run_dfep2,
         'mp3'           : proc.select_mp3,
         'mp2.5'         : proc.select_mp2p5,
@@ -116,12 +114,6 @@ procedures = {
         'casscf'        : proc.run_detcas,
         'rasscf'        : proc.run_detcas,
         'adc'           : proc.run_adc,
-#        'cphf'          : proc.run_libfock,
-#        'cis'           : proc.run_libfock,
-#        'tdhf'          : proc.run_libfock,
-#        'cpks'          : proc.run_libfock,
-#        'tda'           : proc.run_libfock,
-#        'tddft'         : proc.run_libfock,
         'psimrcc'       : proc.run_psimrcc,
         'psimrcc_scf'   : proc.run_psimrcc_scf,
         'qcisd'         : proc.run_fnocc,
@@ -168,12 +160,14 @@ procedures = {
         'ccsd(t)'       : proc.select_ccsd_t__gradient,
         'mp2'           : proc.select_mp2_gradient,
         'eom-ccsd'      : proc.run_eom_cc_gradient,
-        'dcft'          : proc.run_dcft_gradient,
+        'dct'           : proc.run_dct_gradient,
         'omp2'          : proc.select_omp2_gradient,
         'omp3'          : proc.select_omp3_gradient,
         'mp3'           : proc.select_mp3_gradient,
         'mp2.5'         : proc.select_mp2p5_gradient,
         'omp2.5'        : proc.select_omp2p5_gradient,
+        'mp2-d'         : proc.run_dfmp2d_gradient,
+        'mp2d'          : proc.run_dfmp2d_gradient,  # alias to match dft aliasing
         'lccd'          : proc.select_lccd_gradient,
         'olccd'         : proc.select_olccd_gradient,
         'ccd'           : proc.run_dfocc_gradient,
@@ -207,6 +201,9 @@ procedures = {
 energy_only_methods = [x for x in procedures['energy'].keys() if 'sapt' in x]
 energy_only_methods += ['adc', 'efp', 'cphf', 'tdhf', 'cis']
 
+# Will complete modelchem spec with basis='(auto)' for following methods
+integrated_basis_methods = ['g2', 'gaussian-2', 'hf3c', 'hf-3c', 'pbeh3c', 'pbeh-3c', 'sns-mp2']
+
 # Integrate DFT with driver routines
 for key in functionals:
     ssuper = build_superfunctional_from_dictionary(functionals[key], 1, 1, True)[0]
@@ -222,7 +219,7 @@ for key in functionals:
         procedures['gradient'][key] = proc.run_scf_gradient
 
     # Hessians
-    if not ssuper.needs_xc():
+    if not ssuper.is_gga(): # N.B. this eliminates both GGA and m-GGA, as the latter contains GGA terms
         procedures['hessian'][key] = proc.run_scf_hessian
 
 # Integrate CFOUR with driver routines

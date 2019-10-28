@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -172,6 +172,33 @@ class PointFunctions : public BasisFunctions {
     virtual void set_Cs(SharedMatrix Caocc, SharedMatrix Cbocc) = 0;
 };
 
+class SAPFunctions : public PointFunctions {
+   protected:
+    // => Temps <= //
+
+    /// Buffer for half-transform
+    SharedMatrix temp_;
+    /// Build temporary work arrays
+    void build_temps();
+    /// Allocate registers
+    void allocate() override;
+
+   public:
+    SAPFunctions(std::shared_ptr<BasisSet> primary, int max_points, int max_functions);
+    ~SAPFunctions() override;
+    void compute_points(std::shared_ptr<BlockOPoints> block, bool force_compute = true) override;
+    std::vector<SharedMatrix> scratch() override;
+    void print(std::string out_fname = "outfile", int print = 2) const override;
+    size_t block_index() { return block_index_; }
+    // Dummy functions
+    std::vector<SharedMatrix> D_scratch() override;
+    void compute_orbitals(std::shared_ptr<BlockOPoints> block, bool force_compute = true) override;
+    void set_Cs(SharedMatrix Cocc) override;
+    void set_Cs(SharedMatrix Caocc, SharedMatrix Cbocc) override;
+    void set_pointers(SharedMatrix Da_occ_AO) override;
+    void set_pointers(SharedMatrix Da_occ_AO, SharedMatrix Db_occ_AO) override;
+};
+
 class RKSFunctions : public PointFunctions {
    protected:
     // => Pointers <= //
@@ -276,5 +303,5 @@ class UKSFunctions : public PointFunctions {
     void set_Cs(SharedMatrix Caocc, SharedMatrix Cbocc) override;
     size_t block_index() { return block_index_; }
 };
-}
+}  // namespace psi
 #endif

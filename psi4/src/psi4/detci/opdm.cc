@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -90,14 +90,15 @@ void CIWavefunction::form_opdm() {
         Parameters_->average_weights[0] = 1.0;
 
         /* correct "the" energy in the checkpoint file */
-        Process::environment.globals["CURRENT ENERGY"] = overlap;
-        Process::environment.globals["CI TOTAL ENERGY"] = overlap;
+        set_energy(overlap);
+        set_scalar_variable("CURRENT ENERGY", overlap);
+        set_scalar_variable("CI TOTAL ENERGY", overlap);
 
         // eref is wrong for open-shells so replace it with escf until
         // I fix it, CDS 11/5/11
-        Process::environment.globals["CI CORRELATION ENERGY"] = overlap - CalcInfo_->escf;
-        Process::environment.globals["CURRENT CORRELATION ENERGY"] = overlap - CalcInfo_->escf;
-        Process::environment.globals["CURRENT REFERENCE ENERGY"] = CalcInfo_->escf;
+        set_scalar_variable("CI CORRELATION ENERGY", overlap - CalcInfo_->escf);
+        set_scalar_variable("CURRENT CORRELATION ENERGY", overlap - CalcInfo_->escf);
+        set_scalar_variable("CURRENT REFERENCE ENERGY", CalcInfo_->escf);
     }
 
     SharedCIVector Ivec = new_civector(Parameters_->num_roots, Parameters_->d_filenum);
@@ -158,8 +159,8 @@ void CIWavefunction::form_opdm() {
 
     SharedMatrix MO_Da = opdm_add_inactive(opdm_a_, 1.0, true);
     SharedMatrix MO_Db = opdm_add_inactive(opdm_b_, 1.0, true);
-    Da_ = Matrix::triplet(Ca_, MO_Da, Ca_, false, false, true);
-    Db_ = Matrix::triplet(Cb_, MO_Db, Cb_, false, false, true);
+    Da_ = linalg::triplet(Ca_, MO_Da, Ca_, false, false, true);
+    Db_ = linalg::triplet(Cb_, MO_Db, Cb_, false, false, true);
 
     opdm_called_ = true;
 }
@@ -570,7 +571,7 @@ void CIWavefunction::ci_nat_orbs() {
 
     // get a copy of the active orbitals and rotate them
     SharedMatrix Cactv = get_orbitals("ACT");
-    SharedMatrix Cnat = Matrix::doublet(Cactv, NO_vecs);
+    SharedMatrix Cnat = linalg::doublet(Cactv, NO_vecs);
 
     // set the active block of Ca_
     set_orbitals("ACT", Cnat);
@@ -595,7 +596,7 @@ void CIWavefunction::ci_nat_orbs() {
 
             // get a copy of the doubly occupied orbitals and rotate them
             SharedMatrix Cocc = get_orbitals("DOCC");
-            SharedMatrix Cocc_semi = Matrix::doublet(Cocc, evecs_o);
+            SharedMatrix Cocc_semi = linalg::doublet(Cocc, evecs_o);
 
             // set the doubly occupied orbitals block of Ca_
             set_orbitals("DOCC", Cocc_semi);
@@ -609,7 +610,7 @@ void CIWavefunction::ci_nat_orbs() {
 
             // get a copy of the virtual orbitals and rotate them
             SharedMatrix Cvir = get_orbitals("VIR");
-            SharedMatrix Cvir_semi = Matrix::doublet(Cvir, evecs_v);
+            SharedMatrix Cvir_semi = linalg::doublet(Cvir, evecs_v);
 
             // set the virtual orbitals block of Ca_
             set_orbitals("VIR", Cvir_semi);

@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -67,19 +67,19 @@ namespace scf {
 
 */
 
-class CUHF : public HF {
+class CUHF final : public HF {
    protected:
     SharedMatrix Dt_, Dt_old_;
     SharedMatrix Da_old_, Db_old_;
     SharedMatrix J_, Ka_, Kb_;
     // Contributions to the Fock matrix from charge and spin density
     SharedMatrix Fp_, Fm_;
-    // Charge denisty and natural orbitals (eigenvectors of charge density)
+    // Charge density and natural orbitals (eigenvectors of charge density)
     SharedMatrix Dp_, Cno_, Cno_temp_;
     // Natural orbital occupations
     SharedVector No_;
 
-    void form_initialF();
+    void form_initial_F() override;
     double compute_initial_E() override;
 
     void compute_spin_contamination() override;
@@ -107,6 +107,8 @@ class CUHF : public HF {
     bool stability_analysis() override;
 
     std::shared_ptr<CUHF> c1_deep_copy(std::shared_ptr<BasisSet> basis);
+
+    void compute_SAD_guess(bool natorb) override;
 };
 }  // namespace scf
 }  // namespace psi

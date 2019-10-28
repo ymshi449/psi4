@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -99,7 +99,7 @@ void UStab::set_reference(std::shared_ptr<Wavefunction> wfn) {
     eps_virb_ = wfn->epsilon_b_subset("SO", "VIR");
     molecule_ = wfn->molecule();
     basis_ = wfn->basisset();
-    Eref_ = wfn->reference_energy();
+    Eref_ = wfn->energy();
 }
 
 void UStab::print_header() {
@@ -196,7 +196,7 @@ double UStab::compute_energy() {
 
     if (debug_ > 1) {
         for (size_t i = 0; i < eval_temp.size(); ++i) {
-            outfile->Printf("Eigenvalue %4i: %.12f\n", i, vals_[i]);
+            outfile->Printf("Eigenvalue %4lu: %.12f\n", i, vals_[i]);
         }
     }
 

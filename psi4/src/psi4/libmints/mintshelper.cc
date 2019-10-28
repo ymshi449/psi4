@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -45,6 +45,7 @@
 #include "psi4/psi4-dec.h"
 #include "psi4/libpsi4util/PsiOutStream.h"
 #include "psi4/libpsi4util/process.h"
+#include "electricfield.h"
 
 #include <cstdlib>
 #include <cstdio>
@@ -75,7 +76,7 @@ namespace psi {
 /**
  * IWLWriter functor for use with SO TEIs
  **/
-class IWLWriter {
+class PSI_API IWLWriter {
     IWL &writeto_;
     size_t count_;
     int &current_buffer_count_;
@@ -1463,32 +1464,83 @@ std::vector<SharedMatrix> MintsHelper::ao_traceless_quadrupole() {
 }
 
 std::vector<SharedMatrix> MintsHelper::ao_efp_multipole_potential(const std::vector<double> &origin, int deriv) {
+    std::vector<SharedMatrix> ret = ao_multipole_potential(origin, 3, deriv);
+    // EFP expects the following order of Cartesian components
+    //       | // Charge
+    //  0    |      0
+    //       | // Dipole
+    //  1    |      X
+    //  2    |      Y
+    //  3    |      Z
+    //       | // Quadrupole
+    //  4    |      XX
+    //  5    |      YY
+    //  6    |      ZZ
+    //  7    |      XY
+    //  8    |      XZ
+    //  9    |      YZ
+    //       | // Octupole
+    // 10    |      XXX
+    // 11    |      YYY
+    // 12    |      ZZZ
+    // 13    |      XXY
+    // 14    |      XXZ
+    // 15    |      XYY
+    // 16    |      YYZ
+    // 17    |      XZZ
+    // 18    |      YZZ
+    // 19    |      XYZ
+    // Using this mapping, one can convert alphabetical ordering
+    // to EFP ordering of the components
+    std::vector<int> map_components{
+        0,                                      // charge
+        1,  2,  3,                              // dipole
+        4,  7,  9,  5,  6,  8,                  // quadrupole
+        10, 16, 19, 11, 12, 13, 17, 15, 18, 14  // octupole
+    };
+    std::vector<SharedMatrix> ret_reordered;
+    for (size_t i = 0; i < 20; ++i) {
+        ret_reordered.push_back(std::move(ret[map_components[i]]));
+    }
+    return ret_reordered;
+}
+
+std::vector<SharedMatrix> MintsHelper::ao_multipole_potential(const std::vector<double> &origin, int max_k, int deriv) {
     if (origin.size() != 3) throw PSIEXCEPTION("Origin argument must have length 3.");
     Vector3 v3origin(origin[0], origin[1], origin[2]);
 
     std::vector<SharedMatrix> mult;
-    mult.push_back(std::make_shared<Matrix>("AO EFP Charge 0", basisset_->nbf(), basisset_->nbf()));
-    mult.push_back(std::make_shared<Matrix>("AO EFP Dipole X", basisset_->nbf(), basisset_->nbf()));
-    mult.push_back(std::make_shared<Matrix>("AO EFP Dipole Y", basisset_->nbf(), basisset_->nbf()));
-    mult.push_back(std::make_shared<Matrix>("AO EFP Dipole Z", basisset_->nbf(), basisset_->nbf()));
-    mult.push_back(std::make_shared<Matrix>("AO EFP Quadrupole XX", basisset_->nbf(), basisset_->nbf()));
-    mult.push_back(std::make_shared<Matrix>("AO EFP Quadrupole YY", basisset_->nbf(), basisset_->nbf()));
-    mult.push_back(std::make_shared<Matrix>("AO EFP Quadrupole ZZ", basisset_->nbf(), basisset_->nbf()));
-    mult.push_back(std::make_shared<Matrix>("AO EFP Quadrupole XY", basisset_->nbf(), basisset_->nbf()));
-    mult.push_back(std::make_shared<Matrix>("AO EFP Quadrupole XZ", basisset_->nbf(), basisset_->nbf()));
-    mult.push_back(std::make_shared<Matrix>("AO EFP Quadrupole YZ", basisset_->nbf(), basisset_->nbf()));
-    mult.push_back(std::make_shared<Matrix>("AO EFP Octupole XXX", basisset_->nbf(), basisset_->nbf()));
-    mult.push_back(std::make_shared<Matrix>("AO EFP Octupole YYY", basisset_->nbf(), basisset_->nbf()));
-    mult.push_back(std::make_shared<Matrix>("AO EFP Octupole ZZZ", basisset_->nbf(), basisset_->nbf()));
-    mult.push_back(std::make_shared<Matrix>("AO EFP Octupole XXY", basisset_->nbf(), basisset_->nbf()));
-    mult.push_back(std::make_shared<Matrix>("AO EFP Octupole XXZ", basisset_->nbf(), basisset_->nbf()));
-    mult.push_back(std::make_shared<Matrix>("AO EFP Octupole XYY", basisset_->nbf(), basisset_->nbf()));
-    mult.push_back(std::make_shared<Matrix>("AO EFP Octupole YYZ", basisset_->nbf(), basisset_->nbf()));
-    mult.push_back(std::make_shared<Matrix>("AO EFP Octupole XZZ", basisset_->nbf(), basisset_->nbf()));
-    mult.push_back(std::make_shared<Matrix>("AO EFP Octupole YZZ", basisset_->nbf(), basisset_->nbf()));
-    mult.push_back(std::make_shared<Matrix>("AO EFP Octupole XYZ", basisset_->nbf(), basisset_->nbf()));
+    bool do_dipole = (max_k >= 1);
+    bool do_quadrupole = (max_k >= 2);
+    bool do_octupole = (max_k >= 3);
+    mult.push_back(std::make_shared<Matrix>("AO Charge Potential 0", basisset_->nbf(), basisset_->nbf()));
+    if (do_dipole) {
+        mult.push_back(std::make_shared<Matrix>("AO Dipole Potential X", basisset_->nbf(), basisset_->nbf()));
+        mult.push_back(std::make_shared<Matrix>("AO Dipole Potential Y", basisset_->nbf(), basisset_->nbf()));
+        mult.push_back(std::make_shared<Matrix>("AO Dipole Potential Z", basisset_->nbf(), basisset_->nbf()));
+    }
+    if (do_quadrupole) {
+        mult.push_back(std::make_shared<Matrix>("AO Quadrupole Potential XX", basisset_->nbf(), basisset_->nbf()));
+        mult.push_back(std::make_shared<Matrix>("AO Quadrupole Potential XY", basisset_->nbf(), basisset_->nbf()));
+        mult.push_back(std::make_shared<Matrix>("AO Quadrupole Potential XZ", basisset_->nbf(), basisset_->nbf()));
+        mult.push_back(std::make_shared<Matrix>("AO Quadrupole Potential YY", basisset_->nbf(), basisset_->nbf()));
+        mult.push_back(std::make_shared<Matrix>("AO Quadrupole Potential YZ", basisset_->nbf(), basisset_->nbf()));
+        mult.push_back(std::make_shared<Matrix>("AO Quadrupole Potential ZZ", basisset_->nbf(), basisset_->nbf()));
+    }
+    if (do_octupole) {
+        mult.push_back(std::make_shared<Matrix>("AO Octupole Potential XXX", basisset_->nbf(), basisset_->nbf()));
+        mult.push_back(std::make_shared<Matrix>("AO Octupole Potential XXY", basisset_->nbf(), basisset_->nbf()));
+        mult.push_back(std::make_shared<Matrix>("AO Octupole Potential XXZ", basisset_->nbf(), basisset_->nbf()));
+        mult.push_back(std::make_shared<Matrix>("AO Octupole Potential XYY", basisset_->nbf(), basisset_->nbf()));
+        mult.push_back(std::make_shared<Matrix>("AO Octupole Potential XYZ", basisset_->nbf(), basisset_->nbf()));
+        mult.push_back(std::make_shared<Matrix>("AO Octupole Potential XZZ", basisset_->nbf(), basisset_->nbf()));
+        mult.push_back(std::make_shared<Matrix>("AO Octupole Potential YYY", basisset_->nbf(), basisset_->nbf()));
+        mult.push_back(std::make_shared<Matrix>("AO Octupole Potential YYZ", basisset_->nbf(), basisset_->nbf()));
+        mult.push_back(std::make_shared<Matrix>("AO Octupole Potential YZZ", basisset_->nbf(), basisset_->nbf()));
+        mult.push_back(std::make_shared<Matrix>("AO Octupole Potential ZZZ", basisset_->nbf(), basisset_->nbf()));
+    }
 
-    std::shared_ptr<OneBodyAOInt> ints(integral_->ao_efp_multipole_potential(deriv));
+    std::shared_ptr<OneBodyAOInt> ints(integral_->ao_multipole_potential(max_k, deriv));
     ints->set_origin(v3origin);
     ints->compute(mult);
 
@@ -1510,6 +1562,46 @@ std::vector<SharedMatrix> MintsHelper::electric_field(const std::vector<double> 
 
     return field;
 }
+
+SharedMatrix MintsHelper::induction_operator(SharedMatrix coords, SharedMatrix moments) {
+    SharedMatrix mat = std::make_shared<Matrix>("Induction operator", basisset_->nao(), basisset_->nao());
+    ContractOverDipolesFunctor dipfun(moments, mat);
+    auto field_integrals_ = static_cast<ElectricFieldInt*>(integral_->electric_field());
+    field_integrals_->compute_with_functor(dipfun, coords);
+    mat->scale(-1.0);
+
+    PetiteList petite(basisset_, integral_, true);
+    auto my_aotoso_ = petite.aotoso();
+
+    SharedMatrix pure_mat;
+    if (basisset_->has_puream()) {
+        pure_mat = std::make_shared<Matrix>("Induction operator pure", basisset_->nbf(), basisset_->nbf());
+        pure_mat->transform(mat, my_aotoso_);
+        mat = pure_mat;
+    }
+    return mat;
+}
+
+SharedMatrix MintsHelper::electric_field_value(SharedMatrix coords, SharedMatrix D) {
+    auto field_integrals_ = static_cast<ElectricFieldInt*>(integral_->electric_field());
+    PetiteList petite(basisset_, integral_, true);
+    auto my_aotoso_ = petite.aotoso();
+
+    SharedMatrix D_carts;
+    if (basisset_->has_puream()) {
+        D_carts = std::make_shared<Matrix>("D carts", basisset_->nao(), basisset_->nao());
+        D_carts->back_transform(D, my_aotoso_);
+    } else {
+        D_carts = D;
+    }
+
+    SharedMatrix efields = std::make_shared<Matrix>("efields", coords->nrow(), 3);
+    auto fieldfun = ContractOverDensityFieldFunctor(efields, D_carts);
+    field_integrals_->compute_with_functor(fieldfun, coords);
+
+    return efields;
+}
+
 
 std::vector<SharedMatrix> MintsHelper::ao_nabla() {
     // Create a vector of matrices with the proper symmetry
@@ -1812,16 +1904,23 @@ SharedMatrix MintsHelper::perturb_grad(SharedMatrix D) {
         throw PSIEXCEPTION(msg);
     }
 
-    return perturb_grad(D, xlambda, ylambda, zlambda);
+    int natoms = basisset_->molecule()->natom();
+    auto perturbation_gradient = std::make_shared<Matrix>("Perturbation Gradient", natoms, 3);
+    auto dipole_gradients = dipole_grad(D);
+    double lambdas[3] = {xlambda, ylambda, zlambda};
+    C_DGEMM('n', 't', 3 * natoms, 1, 3, 1.0, dipole_gradients->pointer()[0], 3, &lambdas[0], 3, 0.0,
+            perturbation_gradient->pointer()[0], 1);
+    return perturbation_gradient;
 }
-SharedMatrix MintsHelper::perturb_grad(SharedMatrix D, double xlambda, double ylambda, double zlambda) {
+
+SharedMatrix MintsHelper::dipole_grad(SharedMatrix D) {
+    // Computes skeleton (Hellman-Feynman like) dipole derivatives for each perturbation
     double **Dp = D->pointer();
 
     int natom = molecule_->natom();
-    auto ret = std::make_shared<Matrix>("Perturbation Gradient", natom, 3);
+    auto ret = std::make_shared<Matrix>("Dipole dervatives (pert*component, i.e. 3Nx3)", 3 * natom, 3);
     double **Pp = ret->pointer();
 
-    // Electronic dipole perturbation derivatives
     std::shared_ptr<OneBodyAOInt> Dint(integral_->ao_dipole(1));
     const double *buffer = Dint->buffer();
 
@@ -1838,156 +1937,140 @@ SharedMatrix MintsHelper::perturb_grad(SharedMatrix D, double xlambda, double yl
             int aQ = basisset_->shell(Q).ncenter();
 
             const double *ref = buffer;
-            double perm = (P == Q ? 1.0 : 2.0);
-            double prefac;
+            double prefac = (P == Q ? 1.0 : 2.0);
 
             /*
              * Mu X derivatives
              */
-            if (xlambda != 0.0) {
-                prefac = perm * xlambda;
-                // Px
-                for (int p = 0; p < nP; p++) {
-                    for (int q = 0; q < nQ; q++) {
-                        Pp[aP][0] += prefac * Dp[p + oP][q + oQ] * (*ref++);
-                    }
+            // Px
+            for (int p = 0; p < nP; p++) {
+                for (int q = 0; q < nQ; q++) {
+                    Pp[3 * aP + 0][0] += prefac * Dp[p + oP][q + oQ] * (*ref++);
                 }
+            }
 
-                // Py
-                for (int p = 0; p < nP; p++) {
-                    for (int q = 0; q < nQ; q++) {
-                        Pp[aP][1] += prefac * Dp[p + oP][q + oQ] * (*ref++);
-                    }
+            // Py
+            for (int p = 0; p < nP; p++) {
+                for (int q = 0; q < nQ; q++) {
+                    Pp[3 * aP + 1][0] += prefac * Dp[p + oP][q + oQ] * (*ref++);
                 }
+            }
 
-                // Pz
-                for (int p = 0; p < nP; p++) {
-                    for (int q = 0; q < nQ; q++) {
-                        Pp[aP][2] += prefac * Dp[p + oP][q + oQ] * (*ref++);
-                    }
+            // Pz
+            for (int p = 0; p < nP; p++) {
+                for (int q = 0; q < nQ; q++) {
+                    Pp[3 * aP + 2][0] += prefac * Dp[p + oP][q + oQ] * (*ref++);
                 }
+            }
 
-                // Qx
-                for (int p = 0; p < nP; p++) {
-                    for (int q = 0; q < nQ; q++) {
-                        Pp[aQ][0] += prefac * Dp[p + oP][q + oQ] * (*ref++);
-                    }
+            // Qx
+            for (int p = 0; p < nP; p++) {
+                for (int q = 0; q < nQ; q++) {
+                    Pp[3 * aQ + 0][0] += prefac * Dp[p + oP][q + oQ] * (*ref++);
                 }
+            }
 
-                // Qy
-                for (int p = 0; p < nP; p++) {
-                    for (int q = 0; q < nQ; q++) {
-                        Pp[aQ][1] += prefac * Dp[p + oP][q + oQ] * (*ref++);
-                    }
+            // Qy
+            for (int p = 0; p < nP; p++) {
+                for (int q = 0; q < nQ; q++) {
+                    Pp[3 * aQ + 1][0] += prefac * Dp[p + oP][q + oQ] * (*ref++);
                 }
+            }
 
-                // Qz
-                for (int p = 0; p < nP; p++) {
-                    for (int q = 0; q < nQ; q++) {
-                        Pp[aQ][2] += prefac * Dp[p + oP][q + oQ] * (*ref++);
-                    }
+            // Qz
+            for (int p = 0; p < nP; p++) {
+                for (int q = 0; q < nQ; q++) {
+                    Pp[3 * aQ + 2][0] += prefac * Dp[p + oP][q + oQ] * (*ref++);
                 }
-            } else {
-                // Xlambda is zero, so we just advance the pointer to the buffer
-                ref += 6 * nP * nQ;
             }
 
             /*
              * Mu Y derivatives
              */
-            if (ylambda != 0.0) {
-                prefac = perm * ylambda;
-                // Px
-                for (int p = 0; p < nP; p++) {
-                    for (int q = 0; q < nQ; q++) {
-                        Pp[aP][0] += prefac * Dp[p + oP][q + oQ] * (*ref++);
-                    }
+            // Px
+            for (int p = 0; p < nP; p++) {
+                for (int q = 0; q < nQ; q++) {
+                    Pp[3 * aP + 0][1] += prefac * Dp[p + oP][q + oQ] * (*ref++);
                 }
+            }
 
-                // Py
-                for (int p = 0; p < nP; p++) {
-                    for (int q = 0; q < nQ; q++) {
-                        Pp[aP][1] += prefac * Dp[p + oP][q + oQ] * (*ref++);
-                    }
+            // Py
+            for (int p = 0; p < nP; p++) {
+                for (int q = 0; q < nQ; q++) {
+                    Pp[3 * aP + 1][1] += prefac * Dp[p + oP][q + oQ] * (*ref++);
                 }
+            }
 
-                // Pz
-                for (int p = 0; p < nP; p++) {
-                    for (int q = 0; q < nQ; q++) {
-                        Pp[aP][2] += prefac * Dp[p + oP][q + oQ] * (*ref++);
-                    }
+            // Pz
+            for (int p = 0; p < nP; p++) {
+                for (int q = 0; q < nQ; q++) {
+                    Pp[3 * aP + 2][1] += prefac * Dp[p + oP][q + oQ] * (*ref++);
                 }
+            }
 
-                // Qx
-                for (int p = 0; p < nP; p++) {
-                    for (int q = 0; q < nQ; q++) {
-                        Pp[aQ][0] += prefac * Dp[p + oP][q + oQ] * (*ref++);
-                    }
+            // Qx
+            for (int p = 0; p < nP; p++) {
+                for (int q = 0; q < nQ; q++) {
+                    Pp[3 * aQ + 0][1] += prefac * Dp[p + oP][q + oQ] * (*ref++);
                 }
+            }
 
-                // Qy
-                for (int p = 0; p < nP; p++) {
-                    for (int q = 0; q < nQ; q++) {
-                        Pp[aQ][1] += prefac * Dp[p + oP][q + oQ] * (*ref++);
-                    }
+            // Qy
+            for (int p = 0; p < nP; p++) {
+                for (int q = 0; q < nQ; q++) {
+                    Pp[3 * aQ + 1][1] += prefac * Dp[p + oP][q + oQ] * (*ref++);
                 }
+            }
 
-                // Qz
-                for (int p = 0; p < nP; p++) {
-                    for (int q = 0; q < nQ; q++) {
-                        Pp[aQ][2] += prefac * Dp[p + oP][q + oQ] * (*ref++);
-                    }
+            // Qz
+            for (int p = 0; p < nP; p++) {
+                for (int q = 0; q < nQ; q++) {
+                    Pp[3 * aQ + 2][1] += prefac * Dp[p + oP][q + oQ] * (*ref++);
                 }
-            } else {
-                // Ylambda is zero, so we just advance the pointer to the buffer
-                ref += 6 * nP * nQ;
             }
 
             /*
              * Mu Z derivatives
              */
-            if (zlambda != 0.0) {
-                prefac = perm * zlambda;
-                // Px
-                for (int p = 0; p < nP; p++) {
-                    for (int q = 0; q < nQ; q++) {
-                        Pp[aP][0] += prefac * Dp[p + oP][q + oQ] * (*ref++);
-                    }
+            // Px
+            for (int p = 0; p < nP; p++) {
+                for (int q = 0; q < nQ; q++) {
+                    Pp[3 * aP + 0][2] += prefac * Dp[p + oP][q + oQ] * (*ref++);
                 }
+            }
 
-                // Py
-                for (int p = 0; p < nP; p++) {
-                    for (int q = 0; q < nQ; q++) {
-                        Pp[aP][1] += prefac * Dp[p + oP][q + oQ] * (*ref++);
-                    }
+            // Py
+            for (int p = 0; p < nP; p++) {
+                for (int q = 0; q < nQ; q++) {
+                    Pp[3 * aP + 1][2] += prefac * Dp[p + oP][q + oQ] * (*ref++);
                 }
+            }
 
-                // Pz
-                for (int p = 0; p < nP; p++) {
-                    for (int q = 0; q < nQ; q++) {
-                        Pp[aP][2] += prefac * Dp[p + oP][q + oQ] * (*ref++);
-                    }
+            // Pz
+            for (int p = 0; p < nP; p++) {
+                for (int q = 0; q < nQ; q++) {
+                    Pp[3 * aP + 2][2] += prefac * Dp[p + oP][q + oQ] * (*ref++);
                 }
+            }
 
-                // Qx
-                for (int p = 0; p < nP; p++) {
-                    for (int q = 0; q < nQ; q++) {
-                        Pp[aQ][0] += prefac * Dp[p + oP][q + oQ] * (*ref++);
-                    }
+            // Qx
+            for (int p = 0; p < nP; p++) {
+                for (int q = 0; q < nQ; q++) {
+                    Pp[3 * aQ + 0][2] += prefac * Dp[p + oP][q + oQ] * (*ref++);
                 }
+            }
 
-                // Qy
-                for (int p = 0; p < nP; p++) {
-                    for (int q = 0; q < nQ; q++) {
-                        Pp[aQ][1] += prefac * Dp[p + oP][q + oQ] * (*ref++);
-                    }
+            // Qy
+            for (int p = 0; p < nP; p++) {
+                for (int q = 0; q < nQ; q++) {
+                    Pp[3 * aQ + 1][2] += prefac * Dp[p + oP][q + oQ] * (*ref++);
                 }
+            }
 
-                // Qz
-                for (int p = 0; p < nP; p++) {
-                    for (int q = 0; q < nQ; q++) {
-                        Pp[aQ][2] += prefac * Dp[p + oP][q + oQ] * (*ref++);
-                    }
+            // Qz
+            for (int p = 0; p < nP; p++) {
+                for (int q = 0; q < nQ; q++) {
+                    Pp[3 * aQ + 2][2] += prefac * Dp[p + oP][q + oQ] * (*ref++);
                 }
             }
         }

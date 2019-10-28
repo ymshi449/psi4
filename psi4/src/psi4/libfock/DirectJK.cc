@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -65,6 +65,9 @@ void DirectJK::common_init() {
     df_ints_num_threads_ = Process::environment.get_n_threads();
 #endif
 }
+size_t DirectJK::memory_estimate() {
+    return 0; // Effectively
+}
 void DirectJK::print_header() const {
     if (print_) {
         outfile->Printf("  ==> DirectJK: Integral-Direct J/K Matrices <==\n\n");
@@ -78,7 +81,7 @@ void DirectJK::print_header() const {
         outfile->Printf("    Schwarz Cutoff:    %11.0E\n\n", cutoff_);
     }
 }
-void DirectJK::preiterations() { sieve_ = std::make_shared<ERISieve>(primary_, cutoff_); }
+void DirectJK::preiterations() { sieve_ = std::make_shared<ERISieve>(primary_, cutoff_, do_csam_); }
 void DirectJK::compute_JK() {
     auto factory = std::make_shared<IntegralFactory>(primary_, primary_, primary_, primary_);
 

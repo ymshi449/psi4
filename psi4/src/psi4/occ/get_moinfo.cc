@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -101,7 +101,7 @@ void OCCWave::get_moinfo() {
             reference_wavefunction_->get_dipole_field_strength());
 
         // Read SCF energy
-        Escf = reference_wavefunction_->reference_energy();
+        Escf = reference_wavefunction_->energy();
         Eref = Escf;
         Eelec = Escf - Enuc;
 
@@ -449,7 +449,7 @@ void OCCWave::get_moinfo() {
             reference_wavefunction_->get_dipole_field_strength());
 
         // Read SCF energy
-        Escf = reference_wavefunction_->reference_energy();
+        Escf = reference_wavefunction_->energy();
         Eref = Escf;
         Eelec = Escf - Enuc;
 

@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -81,7 +81,7 @@ class SOBasisSet;
 class CorrelationFactor;
 
 /*! \ingroup MINTS */
-class SphericalTransformComponent {
+class PSI_API SphericalTransformComponent {
    protected:
     int a_, b_, c_;
     int cartindex_, pureindex_;
@@ -220,7 +220,7 @@ class AOIntegralsIterator {
 };
 
 /*! \ingroup MINTS */
-class AOShellCombinationsIterator {
+class PSI_API AOShellCombinationsIterator {
    private:
     struct ShellQuartet {
         int P;
@@ -462,9 +462,8 @@ class PSI_API IntegralFactory {
     virtual OneBodyAOInt* ao_angular_momentum(int deriv = 0);
     virtual OneBodySOInt* so_angular_momentum(int deriv = 0);
 
-    /// Returns a OneBodyInt that computes the multipole potential integrals for EFP
-    virtual OneBodyAOInt* ao_efp_multipole_potential(int deriv = 0);
-    virtual OneBodySOInt* so_efp_multipole_potential(int deriv = 0);
+    /// Returns a OneBodyInt that computes the multipole potential integrals for PE and EFP
+    virtual OneBodyAOInt* ao_multipole_potential(int max_k = 0, int deriv = 0);
 
     /// Returns an OneBodyInt that computes the electric field
     virtual OneBodyAOInt* electric_field(int deriv = 0);

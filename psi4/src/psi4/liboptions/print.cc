@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -61,24 +61,26 @@ std::string Options::to_string() const {
     if (localmap == locals_.end()) return str.str();  // Nothing to print
     const std::map<std::string, Data> &keyvals = localmap->second;
     for (const_iterator pos = keyvals.begin(); pos != keyvals.end(); ++pos) {
-        pos->first.size() > largest_key ? largest_key = pos->first.size() : 0;
-        pos->second.to_string().size() > largest_value ? largest_value = pos->second.to_string().size() : 0;
+        pos->first.size() > largest_key ? largest_key = pos->first.size() : 0;  // lgtm [cpp/useless-expression]
+        pos->second.to_string().size() > largest_value ? largest_value = pos->second.to_string().size() : 0;  // lgtm [cpp/useless-expression]
     }
 
     for (const_iterator local_iter = keyvals.begin(); local_iter != keyvals.end(); ++local_iter) {
         std::stringstream line;
         std::string value;
-        bool option_specified;
+        bool option_specified = false;
         const std::string &name = local_iter->first;
         const_iterator global_iter = globals_.find(name);
         if (local_iter->second.has_changed()) {
             // Local option was set, use it
             value = local_iter->second.to_string();
             option_specified = true;
-        } else if (global_iter->second.has_changed()) {
-            // Global option was set, get that
-            value = global_iter->second.to_string();
-            option_specified = true;
+        } else if (global_iter != globals_.end()){ // make sure name is contained in globals_
+            if (global_iter->second.has_changed()) {
+                // Global option was set, get that
+                value = global_iter->second.to_string();
+                option_specified = true;
+            }
         } else {
             // Just use the default local value
             value = local_iter->second.to_string();
@@ -108,7 +110,7 @@ std::string Options::to_string() const {
 
 void Options::print() {
     std::string list = to_string();
-    outfile->Printf("\n\n  Options:");
+    outfile->Printf("\n\n  Module %s Options:", current_module_.c_str());
     outfile->Printf("\n  ----------------------------------------------------------------------------\n");
     outfile->Printf("%s\n", list.c_str());
 }
@@ -119,8 +121,8 @@ std::string Options::globals_to_string() const {
     int largest_key = 0, largest_value = 7;  // 7 for '(empty)'
 
     for (const_iterator pos = globals_.begin(); pos != globals_.end(); ++pos) {
-        pos->first.size() > largest_key ? largest_key = pos->first.size() : 0;
-        pos->second.to_string().size() > largest_value ? largest_value = pos->second.to_string().size() : 0;
+        pos->first.size() > largest_key ? largest_key = pos->first.size() : 0;  // lgtm [cpp/useless-expression]
+        pos->second.to_string().size() > largest_value ? largest_value = pos->second.to_string().size() : 0;  // lgtm [cpp/useless-expression]
     }
 
     for (const_iterator pos = globals_.begin(); pos != globals_.end(); ++pos) {

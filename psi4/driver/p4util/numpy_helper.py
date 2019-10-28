@@ -3,7 +3,7 @@
 #
 # Psi4: an open-source quantum chemistry software package
 #
-# Copyright (c) 2007-2018 The Psi4 Developers.
+# Copyright (c) 2007-2019 The Psi4 Developers.
 #
 # The copyrights for code used from other parties are included in
 # the corresponding files.
@@ -299,6 +299,7 @@ def _to_array(matrix, copy=True, dense=False):
     else:
         return _get_raw_views(matrix, copy=copy)[0]
 
+
 @property
 def _np_shape(self):
     """
@@ -377,11 +378,7 @@ def _np_read(self, filename, prefix=""):
 
     if isinstance(filename, np.lib.npyio.NpzFile):
         data = filename
-    elif (sys.version_info[0] == 2) and isinstance(filename, (str, unicode)):
-        if not filename.endswith('.npz'):
-            filename = filename + '.npz'
-        data = np.load(filename)
-    elif (sys.version_info[0] > 2) and isinstance(filename, str):
+    elif isinstance(filename, str):
         if not filename.endswith('.npz'):
             filename = filename + '.npz'
 
@@ -478,9 +475,10 @@ def _chain_dot(*args, **kwargs):
 
     # Run through
     for n, mat in enumerate(args[1:]):
-        ret = core.Matrix.doublet(ret, mat, False, trans[n + 1])
+        ret = core.doublet(ret, mat, False, trans[n + 1])
 
     return ret
+
 
 def _irrep_access(self, *args, **kwargs):
     """
@@ -488,6 +486,7 @@ def _irrep_access(self, *args, **kwargs):
     """
     raise ValidationError("Attempted to access by index/iteration a Psi4 data object that supports multiple"
                           "irreps. Please use .np or .nph explicitly.")
+
 
 # Matrix attributes
 core.Matrix.from_array = classmethod(array_to_matrix)
@@ -588,6 +587,7 @@ def _dimension_iter(dim):
 core.Dimension.from_list = _dimension_from_list
 core.Dimension.to_tuple = _dimension_to_tuple
 core.Dimension.__iter__ = _dimension_iter
+
 
 # General functions for NumPy array manipulation
 def block_diagonal_array(*args):

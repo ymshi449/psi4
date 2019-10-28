@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -98,10 +98,18 @@ class PSI_API Molecule {
 
     typedef std::vector<std::shared_ptr<CoordEntry>> EntryVector;
     typedef EntryVector::iterator EntryVectorIter;
+    typedef std::map<std::string, std::string> Provenance;
+    typedef std::vector<std::tuple<int, int, double>> Connectivity;
 
    protected:
     /// Molecule (or fragment) name
     std::string name_;
+    /// Molecule comment
+    std::string comment_;
+    /// Molecule origin
+    Provenance provenance_;
+    /// Molecule connectivity
+    Connectivity connectivity_;
     /// Atom info vector (no knowledge of dummy atoms)
     EntryVector atoms_;
     /// Atom info vector (includes dummy atoms)
@@ -180,6 +188,8 @@ class PSI_API Molecule {
     bool zmat_;
     /// Whether this molecule has at least one cartesian entry
     bool cart_;
+    /// Checks whether atom is within bounds of atom_ or full_atom_
+    void check_atom_(int atom, bool full) const;
 
    public:
     Molecule();
@@ -209,6 +219,8 @@ class PSI_API Molecule {
      * \param charge charge to use if non standard
      * \param lbl extended atomic symbol
      * \param A mass number
+     *
+     * add_atom is for Cartesians with NumberValue coordinates. Use add_unsettled_atom otherwise (ZMAT, VariableValue).
      */
     void add_atom(double Z, double x, double y, double z, std::string sym = "", double mass = 0.0, double charge = 0.0,
                   std::string lbl = "", int A = -1);
@@ -228,6 +240,18 @@ class PSI_API Molecule {
     const std::string& basis_on_atom(int atom) const;
     /// Set molecule name
     void set_name(const std::string& _name) { name_ = _name; }
+    /// Get molecule comment
+    const std::string comment() const { return comment_; }
+    /// Set molecule comment
+    void set_comment(const std::string &_comment) { comment_ = _comment; }
+    /// Get molecule provenance
+    const Provenance provenance() const { return provenance_; }
+    /// Set molecule provenance
+    void set_provenance(const Provenance &_provenance) { provenance_ = _provenance; }
+    /// Get molecule connectivity
+    const Connectivity connectivity() const { return connectivity_; }
+    /// Set molecule connectivity
+    void set_connectivity(const Connectivity &_connectivity) { connectivity_ = _connectivity; }
     /// Number of atoms
     int natom() const;
     /// Number of all atoms (includes dummies)

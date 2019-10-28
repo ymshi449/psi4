@@ -3,7 +3,7 @@
 #
 # Psi4: an open-source quantum chemistry software package
 #
-# Copyright (c) 2007-2018 The Psi4 Developers.
+# Copyright (c) 2007-2019 The Psi4 Developers.
 #
 # The copyrights for code used from other parties are included in
 # the corresponding files.
@@ -31,10 +31,6 @@ module calls that access the C++ side of Psi4.
 
 """
 
-## Force Python 3 print syntax, if this is python 2.X
-#if sys.hexversion < 0x03000000:
-from __future__ import print_function
-from __future__ import absolute_import
 import re
 import os
 import sys
@@ -197,12 +193,8 @@ def process_molecule_command(matchobj):
     molecule = spaces
 
     if name != "":
-        if sys.version_info >= (3, 0):
-            if not name.isidentifier():
-                raise ValidationError('Molecule name not valid Python identifier: ' + name)
-        else:
-            if not re.match(r'^[^\d\W]\w*\Z', name):
-                raise ValidationError('Molecule name not valid Python identifier: ' + name)
+        if not name.isidentifier():
+            raise ValidationError('Molecule name not valid Python identifier: ' + name)
 
     if name != "":
         molecule += '%s = ' % (name)
@@ -705,7 +697,7 @@ def process_input(raw_input, print_level=1):
 
     # Process "basis name? { ... }"
     basis_block = re.compile(
-        r'^(\s*?)(basis|df_basis_scf|df_basis_mp2|df_basis_cc|df_basis_sapt)[=\s]*(\w*?)\s*\{(.*?)\}',
+        r'^(\s*?)(basis|df_basis_scf|df_basis_mp2|df_basis_cc|df_basis_sapt|df_basis_sad|df_basis_dct)[=\s]*(\w*?)\s*\{(.*?)\}',
         re.MULTILINE | re.DOTALL | re.IGNORECASE)
     temp = re.sub(basis_block, process_basis_block, temp)
 

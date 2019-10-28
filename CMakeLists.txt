@@ -10,7 +10,7 @@ set(psi4_EMAIL "psi4aiqc+cmake@gmail.com")
 set(psi4_LICENSE "GNU Lesser General Public License, version 3 (LGPL-3.0)")
 set(psi4_DESCRIPTION "Open-Source Quantum Chemistry")
 
-list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
+list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 ################  Options: Overview and Not Otherwise Mentioned  ###############
 
@@ -32,8 +32,9 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 #    - BLAS/LAPACK (also runtime; e.g., `conda install mkl-devel`)
 #    - Python (also runtime; interpreter and headers; e.g., `conda install python`)
 #    - NumPy (also runtime; avoidable at buildtime if gau2grid pre-built; e.g., `conda install numpy`)
-#    - deepdiff (runtime only; e.g., `conda install deepdiff -c conda-forge`)
-#    - networkx (runtime only; e.g., `conda install networkx`)
+#    - networkx >=2.4 (runtime only; e.g., `conda install networkx`)
+#    - pint (runtime only; e.g., `conda install pint -c conda-forge`)
+#    - pydantic >=1.0 (runtime only; e.g., `conda install pydantic -c conda-forge`)
 
 #  These three "###  Options  ###" sections contain useful CMake variables for build configuration.
 
@@ -53,7 +54,8 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 #    - PYTHON_INCLUDE_DIR "Path to the python include files (e.g., /path/to/include/python2.7)"
 #    - SPHINX_ROOT "Root directory for Sphinx: 'bin/sphinx-build' (or similar) should be in this dir."
 #
-#    For any ${AddOn} of: ambit, CheMPS2, dkh, libefp, erd, gau2grid, gdma, Libint, PCMSolver, pybind11, pylibefp, simint, Libxc
+#    For any ${AddOn} of: ambit, CheMPS2, dkh, libefp, erd, gau2grid, gdma, Libint, PCMSolver, pybind11, pylibefp,
+#                         qcelemental, qcengine, simint, Libxc
 #    - CMAKE_PREFIX_PATH "Set to list of root directories to look for externally built add-ons and dependencies
 #      (e.g., /path/to/install-libint;/path/to/install-gdma where exists /path/to/install-libint/lib/libderiv.a)"
 #    - ${AddOn}_DIR "Set to directory containing ${AddOn}Config.cmake file to facilitate detection of external build"
@@ -84,6 +86,7 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake)
 ############################  Options: Build What?  ############################
 option(ENABLE_ambit "Enables the ambit tensor library" OFF)
 option(ENABLE_CheMPS2 "Enables CheMPS2 for DMRG (requires HDF5)" OFF)
+option(ENABLE_cppe "Enables CPPE for Polarizable Embedding" OFF)
 option(ENABLE_dkh "Enables DKH integrals (requires Fortran)" OFF)
 option(ENABLE_libefp "Enables LIBEFP and PylibEFP for fragments" OFF)
 option(ENABLE_erd "Enables use of ERD instead of Libint (requires Fortran)" OFF)
@@ -162,8 +165,8 @@ message(STATUS "Psi4 install: ${CMAKE_INSTALL_PREFIX}")
 # * headers: Python.h for pybind11 to build against in psi4-core
 # * library: not at all
 
-set(Python_ADDITIONAL_VERSIONS 3.7 3.6 3.5)  # adjust with CMake minimum FindPythonInterp
-find_package(PythonLibsNew 3.5 REQUIRED)
+set(Python_ADDITIONAL_VERSIONS 3.7 3.6)  # adjust with CMake minimum FindPythonInterp
+find_package(PythonLibsNew 3.6 REQUIRED)
 message(STATUS "${Cyan}Found Python ${PYTHON_VERSION_MAJOR}.${PYTHON_VERSION_MINOR}${ColourReset}: ${PYTHON_EXECUTABLE} (found version ${PYTHON_VERSION_STRING})")
 
 set(STAGED_INSTALL_PREFIX ${CMAKE_BINARY_DIR}/stage)
@@ -182,6 +185,7 @@ ExternalProject_Add(psi4-core
            hdf5_external
            ambit_external
            chemps2_external
+           cppe_external
            dkh_external
            libefp_external
            erd_external
@@ -192,6 +196,7 @@ ExternalProject_Add(psi4-core
            pybind11_external
            pylibefp_external
            qcelemental_external
+           qcengine_external
            simint_external
            libxc_external
    SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/psi4
@@ -221,6 +226,7 @@ ExternalProject_Add(psi4-core
               -DENABLE_CheMPS2=${ENABLE_CheMPS2}
               -DENABLE_dkh=${ENABLE_dkh}
               -DENABLE_libefp=${ENABLE_libefp}
+              -DENABLE_cppe=${ENABLE_cppe}
               -DENABLE_erd=${ENABLE_erd}
               -DENABLE_simint=${ENABLE_simint}
               -DENABLE_gdma=${ENABLE_gdma}
@@ -232,6 +238,7 @@ ExternalProject_Add(psi4-core
               -DCheMPS2_DIR=${CheMPS2_DIR}
               -Ddkh_DIR=${dkh_DIR}
               -Dlibefp_DIR=${libefp_DIR}
+              -Dcppe_DIR=${cppe_DIR}
               -Derd_DIR=${erd_DIR}
               -Dgau2grid_DIR=${gau2grid_DIR}
               -Dgdma_DIR=${gdma_DIR}

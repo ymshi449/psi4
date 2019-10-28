@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -33,6 +33,9 @@
 #include "psi4/libpsipcm/psipcm.h"
 
 using namespace psi;
+namespace py = pybind11;
+using namespace pybind11::literals;
+
 #ifdef USING_PCMSolver
 
 void export_pcm(py::module& m) {
@@ -44,7 +47,7 @@ void export_pcm(py::module& m) {
         .value("EleOnly", PCM::CalcType::EleOnly);
 
     pcm.def(py::init<std::string, int, std::shared_ptr<BasisSet>>())
-        .def("compute_PCM_terms", &PCM::compute_PCM_terms, "Compute PCM contributions to energy and Fock matrix",
-             py::arg("D"), py::arg("type"));
+        .def("compute_PCM_terms", &PCM::compute_PCM_terms, "Compute PCM contributions to energy and Fock matrix", "D"_a,
+             "type"_a);
 }
 #endif

@@ -3,7 +3,7 @@
 #
 # Psi4: an open-source quantum chemistry software package
 #
-# Copyright (c) 2007-2018 The Psi4 Developers.
+# Copyright (c) 2007-2019 The Psi4 Developers.
 #
 # The copyrights for code used from other parties are included in
 # the corresponding files.
@@ -31,11 +31,10 @@ functionality, namely single-point energies, geometry optimizations,
 properties, and vibrational frequency calculations.
 
 """
-from __future__ import print_function
-from __future__ import absolute_import
 import os
 import re
 import sys
+import copy
 import json
 import shutil
 
@@ -60,7 +59,9 @@ def _find_derivative_type(ptype, method_name, user_dertype):
     a given method.
     """
 
-    if ptype not in ['gradient', 'hessian']:
+    derivatives = {"gradient": 1, "hessian": 2}
+
+    if ptype not in derivatives:
         raise ValidationError("_find_derivative_type: ptype must either be gradient or hessian.")
 
     dertype = "(auto)"
@@ -108,6 +109,8 @@ def _find_derivative_type(ptype, method_name, user_dertype):
         raise ValidationError("""Derivative method 'name' %s and derivative level 'dertype' %s are not available.%s"""
                               % (method_name, str(dertype), alternatives))
 
+    dertype = min(dertype, derivatives[ptype])
+
     return dertype
 
 
@@ -140,7 +143,8 @@ def _process_displacement(derivfunc, method, molecule, displacement, n, ndisp, *
        method : str
           A string specifying the method to be used for the computation.
        molecule: psi4.core.molecule or qcdb.molecule
-          The molecule for the computation. Geometry setting is handled internally.
+          The molecule for the computation. All processing is handled internally.
+          molecule must not be modified!
        displacement : dict
           A dictionary containing the necessary information for the displacement.
           See driver_findif/_geom_generator.py docstring for details.
@@ -161,15 +165,27 @@ def _process_displacement(derivfunc, method, molecule, displacement, n, ndisp, *
     print(""" %d""" % (n), end=('\n' if (n == ndisp) else ''))
     sys.stdout.flush()
 
+    parent_group = molecule.point_group()
+    clone = molecule.clone()
+    clone.reinterpret_coordentry(False)
+    clone.fix_orientation(True)
+
     # Load in displacement (flat list) into the active molecule
     geom_array = np.reshape(displacement["geometry"], (-1, 3))
-    molecule.set_geometry(core.Matrix.from_array(geom_array))
+    clone.set_geometry(core.Matrix.from_array(geom_array))
+
+    # If the user insists on symmetry, weaken it if some is lost when displacing.
+    if molecule.symmetry_from_input():
+        disp_group = clone.find_highest_point_group()
+        new_bits = parent_group.bits() & disp_group.bits()
+        new_symm_string = qcdb.PointGroup.bits_to_full_name(new_bits)
+        clone.reset_point_group(new_symm_string)
 
     # clean possibly necessary for n=1 if its irrep (unsorted in displacement list) different from initial G0 for freq
     core.clean()
 
     # Perform the derivative calculation
-    derivative, wfn = derivfunc(method, return_wfn=True, molecule=molecule, **kwargs)
+    derivative, wfn = derivfunc(method, return_wfn=True, molecule=clone, **kwargs)
     displacement["energy"] = core.variable('CURRENT ENERGY')
 
     # If we computed a first or higher order derivative, set it.
@@ -181,6 +197,11 @@ def _process_displacement(derivfunc, method, molecule, displacement, n, ndisp, *
 
     return wfn
 
+
+def _filter_renamed_methods(compute, method):
+    r"""Raises UpgradeHelper when a method has been renamed."""
+    if method == "dcft":
+        raise UpgradeHelper(compute + "('dcft')", compute + "('dct')", 1.4, " All instances of 'dcft' should be replaced with 'dct'.")
 
 def energy(name, **kwargs):
     r"""Function to compute the single-point electronic energy.
@@ -235,7 +256,7 @@ def energy(name, **kwargs):
     +-------------------------+---------------------------------------------------------------------------------------------------------------+
     | pbeh3c                  | PBEh with dispersion, BSSE, and basis set corrections :ref:`[manual] <sec:gcp>`                               |
     +-------------------------+---------------------------------------------------------------------------------------------------------------+
-    | dcft                    | density cumulant functional theory :ref:`[manual] <sec:dcft>`                                                 |
+    | dct                     | density cumulant (functional) theory :ref:`[manual] <sec:dct>`                                                 |
     +-------------------------+---------------------------------------------------------------------------------------------------------------+
     | mp2                     | 2nd-order |MollerPlesset| perturbation theory (MP2) :ref:`[manual] <sec:dfmp2>` :ref:`[details] <tlmp2>`      |
     +-------------------------+---------------------------------------------------------------------------------------------------------------+
@@ -478,6 +499,8 @@ def energy(name, **kwargs):
     """
     kwargs = p4util.kwargs_lower(kwargs)
 
+    core.print_out("\nScratch directory: %s\n" % core.IOManager.shared_object().get_default_path())
+
     # Bounce to CP if bsse kwarg
     if kwargs.get('bsse_type', None) is not None:
         return driver_nbody.nbody_gufunc(energy, name, ptype='energy', **kwargs)
@@ -495,6 +518,8 @@ def energy(name, **kwargs):
     # Bounce to CBS if "method/basis" name
     if "/" in lowername:
         return driver_cbs._cbs_gufunc(energy, name, ptype='energy', **kwargs)
+
+    _filter_renamed_methods("energy", lowername)
 
     # Commit to procedures['energy'] call hereafter
     return_wfn = kwargs.pop('return_wfn', False)
@@ -582,6 +607,8 @@ def gradient(name, **kwargs):
 
     """
     kwargs = p4util.kwargs_lower(kwargs)
+    
+    core.print_out("\nScratch directory: %s\n" % core.IOManager.shared_object().get_default_path())
 
     # Figure out what kind of gradient this is
     if hasattr(name, '__call__'):
@@ -617,7 +644,7 @@ def gradient(name, **kwargs):
         else:
             optstash = driver_util._set_convergence_criterion('energy', 'scf', 8, 10, 8, 10, 8)
             lowername = name
-    
+
     elif gradient_type == 'nbody_gufunc':
         return driver_nbody.nbody_gufunc(gradient, name, ptype='gradient', **kwargs)
 
@@ -634,6 +661,8 @@ def gradient(name, **kwargs):
 
     elif gradient_type == 'cbs_gufunc':
         cbs_methods = driver_cbs._parse_cbs_gufunc_string(name.lower())[0]
+        for method in cbs_methods:
+            _filter_renamed_methods("gradient", method)
         dertype = min([_find_derivative_type('gradient', method, user_dertype) for method in cbs_methods])
         lowername = name.lower()
         if dertype == 1:
@@ -646,6 +675,7 @@ def gradient(name, **kwargs):
     else:
         # Allow specification of methods to arbitrary order
         lowername = name.lower()
+        _filter_renamed_methods("gradient", lowername)
         lowername, level = driver_util.parse_arbitrary_order(lowername)
         if level:
             kwargs['level'] = level
@@ -658,6 +688,7 @@ def gradient(name, **kwargs):
 
         # Set method-dependent scf convergence criteria (test on procedures['energy'] since that's guaranteed)
         optstash = driver_util._set_convergence_criterion('energy', lowername, 8, 10, 8, 10, 8)
+
 
     # Commit to procedures[] call hereafter
     return_wfn = kwargs.pop('return_wfn', False)
@@ -689,32 +720,34 @@ def gradient(name, **kwargs):
         if opt_iter == 1:
             print('Performing finite difference calculations')
 
-        # Shifting the geometry so need to copy the active molecule
-        moleculeclone = molecule.clone()
-
         # Obtain list of displacements
-        findif_meta_dict = driver_findif.gradient_from_energy_geometries(moleculeclone)
+        findif_meta_dict = driver_findif.gradient_from_energies_geometries(molecule)
         ndisp = len(findif_meta_dict["displacements"]) + 1
 
-        # This version is pretty dependent on the reference geometry being last (as it is now)
         print(""" %d displacements needed ...""" % (ndisp), end='')
 
-        for n, displacement in enumerate(findif_meta_dict["displacements"].values(), start=1):
-            _process_displacement(
-                energy, lowername, moleculeclone, displacement, n, ndisp, write_orbitals=False, **kwargs)
-
-        wfn = _process_displacement(energy, lowername, moleculeclone, findif_meta_dict["reference"], ndisp, ndisp,
+        wfn = _process_displacement(energy, lowername, molecule, findif_meta_dict["reference"], 1, ndisp,
                                     **kwargs)
+        var_dict = core.variables()
+
+        for n, displacement in enumerate(findif_meta_dict["displacements"].values(), start=2):
+            _process_displacement(
+                energy, lowername, molecule, displacement, n, ndisp, write_orbitals=False, **kwargs)
+
+        # Reset variables
+        for key, val in var_dict.items():
+            core.set_variable(key, val)
 
         # Compute the gradient
         core.set_local_option('FINDIF', 'GRADIENT_WRITE', True)
-        G = driver_findif.compute_gradient_from_energies(findif_meta_dict)
+        G = driver_findif.assemble_gradient_from_energies(findif_meta_dict)
         grad_psi_matrix = core.Matrix.from_array(G)
         grad_psi_matrix.print_out()
         wfn.set_gradient(grad_psi_matrix)
 
         # Explicitly set the current energy..
         core.set_variable('CURRENT ENERGY', findif_meta_dict["reference"]["energy"])
+        wfn.set_variable('CURRENT ENERGY', findif_meta_dict["reference"]["energy"])
 
     optstash.restore()
 
@@ -902,7 +935,7 @@ def optimize(name, **kwargs):
     +-------------------------+---------------------------------------------------------------------------------------------------------------+
     | hf                      | HF self consistent field (SCF) :ref:`[manual] <sec:scf>`                                                      |
     +-------------------------+---------------------------------------------------------------------------------------------------------------+
-    | dcft                    | density cumulant functional theory :ref:`[manual] <sec:dcft>`                                                 |
+    | dct                     | density cumulant (functional) theory :ref:`[manual] <sec:dct>`                                                 |
     +-------------------------+---------------------------------------------------------------------------------------------------------------+
     | mp2                     | 2nd-order |MollerPlesset| perturbation theory (MP2) :ref:`[manual] <sec:dfmp2>` :ref:`[details] <tlmp2>`      |
     +-------------------------+---------------------------------------------------------------------------------------------------------------+
@@ -995,6 +1028,8 @@ def optimize(name, **kwargs):
     else:
         hessian_with_method = kwargs.get('hessian_with', lowername)
 
+    _filter_renamed_methods("optimize", lowername)
+
     optstash = p4util.OptionsState(
         ['OPTKING', 'INTRAFRAG_STEP_LIMIT'],
         ['FINDIF', 'HESSIAN_WRITE'],
@@ -1064,7 +1099,7 @@ def optimize(name, **kwargs):
             G = core.get_legacy_gradient()  # TODO
             core.IOManager.shared_object().set_specific_retention(1, True)
             core.IOManager.shared_object().set_specific_path(1, './')
-            frequencies(hessian_with_method, molecule=moleculeclone, **kwargs)
+            frequencies(hessian_with_method, molecule=moleculeclone, ref_gradient = G, **kwargs)
             steps_since_last_hessian = 0
             core.set_legacy_gradient(G)
             core.set_global_option('CART_HESS_READ', True)
@@ -1180,7 +1215,7 @@ def hessian(name, **kwargs):
             gradient_type = 'custom_function'
 
     elif kwargs.get('bsse_type', None) is not None:
-        gradient_type = 'nbody_gufunc' 
+        gradient_type = 'nbody_gufunc'
     elif '/' in name:
         gradient_type = 'cbs_gufunc'
     else:
@@ -1198,6 +1233,8 @@ def hessian(name, **kwargs):
         raise ValidationError("Hessian: Does not yet support custom functions.")
     else:
         lowername = name.lower()
+
+    _filter_renamed_methods("frequency", lowername)
     
     return_wfn = kwargs.pop('return_wfn', False)
     core.clean_variables()
@@ -1217,7 +1254,7 @@ def hessian(name, **kwargs):
     if level:
         kwargs['level'] = level
 
-    dertype = _find_derivative_type('hessian', lowername, kwargs.pop('freq_dertype', kwargs.pop('dertype', None)))
+    dertype = _find_derivative_type('hessian', lowername, kwargs.pop('freq_dertype', kwargs.get('dertype', None)))
 
     # Make sure the molecule the user provided is the active one
     molecule = kwargs.pop('molecule', core.get_active_molecule())
@@ -1264,43 +1301,45 @@ def hessian(name, **kwargs):
 
         # TODO: check that current energy's being set to the right figure when this code is actually used
         core.set_variable('CURRENT ENERGY', wfn.energy())
+        wfn.set_variable('CURRENT ENERGY', wfn.energy())
 
     elif dertype == 1:
         core.print_out(
             """hessian() will perform frequency computation by finite difference of analytic gradients.\n""")
 
-        # Shifting the geometry so need to copy the active molecule
-        moleculeclone = molecule.clone()
-
         # Obtain list of displacements
-        findif_meta_dict = driver_findif.hessian_from_gradient_geometries(moleculeclone, irrep)
-        moleculeclone.reinterpret_coordentry(False)
-        moleculeclone.fix_orientation(True)
+        findif_meta_dict = driver_findif.hessian_from_gradients_geometries(molecule, irrep)
 
         # Record undisplaced symmetry for projection of displaced point groups
-        core.set_parent_symmetry(molecule.schoenflies_symbol())
+        core.set_global_option("PARENT_SYMMETRY", molecule.schoenflies_symbol())
 
         ndisp = len(findif_meta_dict["displacements"]) + 1
 
         print(""" %d displacements needed.""" % ndisp)
 
-        for n, displacement in enumerate(findif_meta_dict["displacements"].values(), start=1):
-            _process_displacement(
-                gradient, lowername, moleculeclone, displacement, n, ndisp, write_orbitals=False, **kwargs)
-
-        wfn = _process_displacement(gradient, lowername, moleculeclone, findif_meta_dict["reference"], ndisp, ndisp,
+        wfn = _process_displacement(gradient, lowername, molecule, findif_meta_dict["reference"], 1, ndisp,
                                     **kwargs)
+        var_dict = core.variables()
+
+        for n, displacement in enumerate(findif_meta_dict["displacements"].values(), start=2):
+            _process_displacement(
+                gradient, lowername, molecule, displacement, n, ndisp, write_orbitals=False, **kwargs)
+
+        # Reset variables
+        for key, val in var_dict.items():
+            core.set_variable(key, val)
 
         # Assemble Hessian from gradients
         #   Final disp is undisp, so wfn has mol, G, H general to freq calc
-        H = driver_findif.compute_hessian_from_gradients(findif_meta_dict, irrep)  # TODO or moleculeclone?
+        H = driver_findif.assemble_hessian_from_gradients(findif_meta_dict, irrep)
         wfn.set_hessian(core.Matrix.from_array(H))
         wfn.set_gradient(G0)
 
         # Explicitly set the current energy..
         core.set_variable('CURRENT ENERGY', findif_meta_dict["reference"]["energy"])
+        wfn.set_variable('CURRENT ENERGY', findif_meta_dict["reference"]["energy"])
 
-        core.set_parent_symmetry('')
+        core.set_global_option("PARENT_SYMMETRY", "")
         optstash.restore()
         optstash_conv.restore()
 
@@ -1312,37 +1351,38 @@ def hessian(name, **kwargs):
         optstash_conv.restore()
         optstash_conv = driver_util._set_convergence_criterion('energy', lowername, 10, 11, 10, 11, 10)
 
-        # Shifting the geometry so need to copy the active molecule
-        moleculeclone = molecule.clone()
-
         # Obtain list of displacements
-        findif_meta_dict = driver_findif.hessian_from_energy_geometries(moleculeclone, irrep)
-        moleculeclone.fix_orientation(True)
-        moleculeclone.reinterpret_coordentry(False)
+        findif_meta_dict = driver_findif.hessian_from_energies_geometries(molecule, irrep)
 
         # Record undisplaced symmetry for projection of diplaced point groups
-        core.set_parent_symmetry(molecule.schoenflies_symbol())
+        core.set_global_option("PARENT_SYMMETRY", molecule.schoenflies_symbol())
 
         ndisp = len(findif_meta_dict["displacements"]) + 1
 
         print(' %d displacements needed.' % ndisp)
 
-        for n, displacement in enumerate(findif_meta_dict["displacements"].values(), start=1):
-            _process_displacement(
-                energy, lowername, moleculeclone, displacement, n, ndisp, write_orbitals=False, **kwargs)
-
-        wfn = _process_displacement(energy, lowername, moleculeclone, findif_meta_dict["reference"], ndisp, ndisp,
+        wfn = _process_displacement(energy, lowername, molecule, findif_meta_dict["reference"], 1, ndisp,
                                     **kwargs)
+        var_dict = core.variables()
+
+        for n, displacement in enumerate(findif_meta_dict["displacements"].values(), start=2):
+            _process_displacement(
+                energy, lowername, molecule, displacement, n, ndisp, write_orbitals=False, **kwargs)
+
+        # Reset variables
+        for key, val in var_dict.items():
+            core.set_variable(key, val)
 
         # Assemble Hessian from energies
-        H = driver_findif.compute_hessian_from_energies(findif_meta_dict, irrep)
+        H = driver_findif.assemble_hessian_from_energies(findif_meta_dict, irrep)
         wfn.set_hessian(core.Matrix.from_array(H))
         wfn.set_gradient(G0)
 
         # Explicitly set the current energy..
         core.set_variable('CURRENT ENERGY', findif_meta_dict["reference"]["energy"])
+        wfn.set_variable('CURRENT ENERGY', findif_meta_dict["reference"]["energy"])
 
-        core.set_parent_symmetry('')
+        core.set_global_option("PARENT_SYMMETRY", "")
         optstash.restore()
         optstash_conv.restore()
 
@@ -1439,7 +1479,7 @@ def frequency(name, **kwargs):
 
     """
     kwargs = p4util.kwargs_lower(kwargs)
-
+    
     return_wfn = kwargs.pop('return_wfn', False)
 
     # Make sure the molecule the user provided is the active one
@@ -1456,8 +1496,6 @@ def frequency(name, **kwargs):
 
     irrep = kwargs.get('irrep', None)
     vibinfo = vibanal_wfn(wfn, irrep=irrep, project_trans=project_trans, project_rot=project_rot)
-    vibonly = qcdb.vib.filter_nonvib(vibinfo)
-    wfn.set_frequencies(core.Vector.from_array(qcdb.vib.filter_omega_to_real(vibonly['omega'].data)))
     wfn.frequency_analysis = vibinfo
 
     for postcallback in hooks['frequency']['post']:
@@ -1503,6 +1541,10 @@ def vibanal_wfn(wfn, hess=None, irrep=None, molecule=None, project_trans=True, p
     else:
         nmwhess = hess
 
+    dipder = wfn.variables().get("CURRENT DIPOLE GRADIENT", None)
+    if dipder is not None:
+        dipder = np.asarray(dipder).T
+
     mol = wfn.molecule()
     geom = np.asarray(mol.geometry())
     symbols = [mol.symbol(at) for at in range(mol.natom())]
@@ -1529,8 +1571,8 @@ def vibanal_wfn(wfn, hess=None, irrep=None, molecule=None, project_trans=True, p
     irrep_labels = mol.irrep_labels()
 
     vibinfo, vibtext = qcdb.vib.harmonic_analysis(
-        nmwhess, geom, m, wfn.basisset(), irrep_labels, project_trans=project_trans, project_rot=project_rot)
-    vibrec.update({k: qca.to_dict() for k, qca in vibinfo.items()})
+        nmwhess, geom, m, wfn.basisset(), irrep_labels, dipder=dipder, project_trans=project_trans, project_rot=project_rot)
+    vibrec.update({k: qca.json() for k, qca in vibinfo.items()})
 
     core.print_out(vibtext)
     core.print_out(qcdb.vib.print_vibs(vibinfo, shortlong=True, normco='x', atom_lbl=symbols))
@@ -1551,7 +1593,7 @@ def vibanal_wfn(wfn, hess=None, irrep=None, molecule=None, project_trans=True, p
             rotor_type=mol.rotor_type(),
             rot_const=np.asarray(mol.rotational_constants()),
             E0=core.variable('CURRENT ENERGY'))  # someday, wfn.energy()
-        vibrec.update({k: qca.to_dict() for k, qca in therminfo.items()})
+        vibrec.update({k: qca.json() for k, qca in therminfo.items()})
 
         core.set_variable("ZPVE", therminfo['ZPE_corr'].data)
         core.set_variable("THERMAL ENERGY CORRECTION", therminfo['E_corr'].data)
@@ -1622,8 +1664,9 @@ def gdma(wfn, datafile=""):
     if datafile:
         commands = datafile
     else:
-        densname = wfn.name()
-        if densname == "DFT":
+        if wfn.reference_wavefunction():
+            densname = "CC"
+        else:
             densname = "SCF"
         commands = 'psi4_dma_datafile.dma'
         radii = core.get_option('GDMA', 'GDMA_RADIUS')
@@ -1666,6 +1709,12 @@ def fchk(wfn, filename):
     :type wfn: :py:class:`~psi4.core.Wavefunction`
     :param wfn: set of molecule, basis, orbitals from which to generate fchk file
 
+    Notes
+    -----
+    * A description of the FCHK format is http://wild.life.nctu.edu.tw/~jsyu/compchem/g09/g09ur/f_formchk.htm
+    * The allowed headers for methods are general and limited, i.e., "Total SCF|MP2|CI|CC Density",
+      so "CC" is always used for the post-HF case.
+
     :examples:
 
     >>> # [1] FCHK file for DFT calculation
@@ -1707,23 +1756,38 @@ def molden(wfn, filename=None, density_a=None, density_b=None, dovirtual=None):
 
     :examples:
 
-    >>> # [1] Molden file for DFT calculation
-    >>> E, wfn = energy('b3lyp', return_wfn=True)
-    >>> molden(wfn, 'mycalc.molden')
+    1. Molden file with the Kohn-Sham orbitals of a DFT calculation.
 
-    >>> # [2] Molden file for CI/MCSCF computation using NO roots
-    >>> E, wfn = energy('ci', return_wfn=True)
-    >>> molden(wfn, 'no_root1.molden', density_a=wfn.opdm(0, 0, "A", True))
+       >>> E, wfn = energy('b3lyp', return_wfn=True)
+       >>> molden(wfn, 'mycalc.molden')
 
-    >>> # [3] The following does NOT work, please see below
-    >>> E, wfn = energy('ccsd', return_wfn=True)
-    >>> molden(wfn, 'ccsd_no.molden', density_a=wfn.Da())
+    2. Molden file for CI/MCSCF computation using NO roots.
+       Any method returning a ``CIWavefunction`` object will work: ``detci``,
+       ``fci``, ``casscf``, etc. The first two arguments of ``get_opdm`` can be
+       set to ``n, n`` where n => 0 selects the root to write out, provided
+       these roots were computed, see :term:`NUM_ROOTS <NUM_ROOTS (DETCI)>`. The
+       third argument controls the spin (``"A"``, ``"B"`` or ``"SUM"``) and the final
+       boolean option determines whether inactive orbitals are included.
 
-    >>> # [4] This WILL work, note the transformation of Da (SO->MO)
-    >>> E, wfn = properties('ccsd', properties=['dipole'], return_wfn=True)
-    >>> Da_so = wfn.Da()
-    >>> Da_mo = Matrix.triplet(wfn.Ca(), Da_so, wfn.Ca(), True, False, False)
-    >>> molden(wfn, 'ccsd_no.molden', density_a=Da_mo)
+       >>> E, wfn = energy('detci', return_wfn=True)
+       >>> molden(wfn, 'no_root1.molden', density_a=wfn.get_opdm(0, 0, "A", True))
+
+    3. The following produces **an INCORRECT Molden file**, because the
+       ``molden`` function needs orbitals in the MO basis (which are internally
+       converted and written to the Molden file in the AO basis). The correct
+       usage is given in the next point.
+
+       >>> E, wfn = energy('ccsd', return_wfn=True)
+       >>> molden(wfn, 'ccsd_no.molden', density_a=wfn.Da())
+
+    4. Molden file with the natural orbitals of the ground-state 1RDM of a
+       Post-HF calculation. Note the required transformation of Da (SO->MO).
+
+       >>> E, wfn = properties('ccsd', return_wfn=True)
+       >>> Da_so = wfn.Da()
+       >>> SCa = core.doublet(wfn.S(), wfn.Ca(), False, False)
+       >>> Da_mo = core.triplet(SCa, Da_so, SCa, True, False, False)
+       >>> molden(wfn, 'ccsd_no.molden', density_a=Da_mo)
 
     """
 

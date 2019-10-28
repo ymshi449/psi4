@@ -3,7 +3,7 @@
 .. #
 .. # Psi4: an open-source quantum chemistry software package
 .. #
-.. # Copyright (c) 2007-2018 The Psi4 Developers.
+.. # Copyright (c) 2007-2019 The Psi4 Developers.
 .. #
 .. # The copyrights for code used from other parties are included in
 .. # the corresponding files.
@@ -418,4 +418,32 @@ Bibliography
 .. [Podeszwa:2010:550]
    R. Podeszwa, K. Pernal, K. Patkowski, K. Szalewicz
    *J. Phys. Chem. Lett.* **1** 550 (2010).
+
+.. [Schaffer:2012:1235]
+   R. Sch\ |a_dots|\ ffer and G. Jansen
+   *Theor. Chem. Acc.* **131**, 1235 (2012).
+
+.. [Schaffer:2013:2570]
+   R. Sch\ |a_dots|\ ffer and G. Jansen
+   *Mol. Phys.* **111**, 2570 (2013).
+
+.. [Laqua:2018:204111]
+   H. Laque, J. Kussmann and C. Ochsenfeld
+   *J. Chem. Phys.* **149**, 204111 (2018) 
+
+.. [Lehtola:2019:1593]
+   S. Lehtola
+   *J. Chem. Theory Comput.* **15**, 1593 (2019)
+
+.. [Lehtola:2019:25945]
+   S. Lehtola
+   *Int. J. Quantum Chem.* e25945 (2019)
+
+.. [Lehtola:2019:02528]
+   S. Lehtola
+   *arXiv* preprint 1908.02528 (2019)
+
+.. [Olsen:2010:3721]
+   J. M. Olsen, K. Aidas, and J. Kongsted.
+   *J. Chem. Theory Comput.* **6**, 3721–3734 (2010).
 

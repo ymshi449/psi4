@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -47,6 +47,9 @@ enum PsiReturnType { Success, Failure, Balk, EndLoop };
 
 // Very useful regex for matching floating point numbers
 #define NUMBER "((?:[-+]?\\d*\\.\\d+(?:[DdEe][-+]?\\d+)?)|(?:[-+]?\\d+\\.\\d*(?:[DdEe][-+]?\\d+)?))"
+
+// Hard zero
+#define PSI_ZERO 1.0E-14
 
 void die_if_not_converged();
 

@@ -12,10 +12,17 @@ list(APPEND CMAKE_MODULE_PATH ${PSI4_ROOT}/cmake)
 
 include(psi4OptionsTools)
 include(TestRestrict)
+include(TestBigEndian)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 include(custom_color_messages)
 test_restrict(restrict)
+test_big_endian(endianness)
+if(${endianness})
+    set(_endian_ext ".big")
+else()
+    set(_endian_ext ".little")
+endif()
 # GNUInstallDirs "DATADIR" wrong here; CMake search path wants "share".
 set(CMAKECONFIG_INSTALL_DIR "share/cmake/psi4")
 
@@ -50,7 +57,7 @@ if(MSVC)
 else()
   set(PYBIND11_CPP_STANDARD "-std=c++${CMAKE_CXX_STANDARD}")
 endif()
-find_package(pybind11 2.2.3 CONFIG REQUIRED)
+find_package(pybind11 2.3.0 CONFIG REQUIRED)
 message(STATUS "${Cyan}Using pybind11${ColourReset}: ${pybind11_INCLUDE_DIR} (version ${pybind11_VERSION} for Py${PYTHON_VERSION_STRING} and ${PYBIND11_CPP_STANDARD})")
 message(STATUS "${Cyan}Using Python ${PYTHON_VERSION_MAJOR}.${PYTHON_VERSION_MINOR}${ColourReset}: ${PYTHON_EXECUTABLE}")
 
@@ -65,7 +72,7 @@ else()
 endif ()
 
 if(${ENABLE_CheMPS2})
-    find_package(CheMPS2 1.8.3 CONFIG REQUIRED)
+    find_package(CheMPS2 1.8.7 CONFIG REQUIRED)
     get_property(_loc TARGET CheMPS2::chemps2 PROPERTY LOCATION)
     list(APPEND _addons ${_loc})
     message(STATUS "${Cyan}Using CheMPS2${ColourReset}: ${_loc} (version ${CheMPS2_VERSION})")
@@ -108,7 +115,7 @@ else()
     message(STATUS "Disabled erd")
 endif()
 
-find_package(gau2grid 1.2 CONFIG REQUIRED COMPONENTS gaussian)
+find_package(gau2grid 2.0 CONFIG REQUIRED)
 get_property(_loc TARGET gau2grid::gg PROPERTY LOCATION)
 list(APPEND _addons ${_loc})
 message(STATUS "${Cyan}Using gau2grid${ColourReset}: ${_loc} (version ${gau2grid_VERSION})")
@@ -136,6 +143,15 @@ else()
     message(STATUS "Disabled PCMSolver")
 endif ()
 
+if(${ENABLE_cppe})
+    find_package(cppe 0.1.1 CONFIG REQUIRED)
+    get_property(_loc TARGET cppe::cppe PROPERTY LOCATION)
+    list(APPEND _addons ${_loc})
+    message(STATUS "${Cyan}Using cppe${ColourReset}: ${_loc} (version ${cppe_VERSION})")
+else()
+    message(STATUS "Disabled CPPE")
+endif ()
+
 if(${ENABLE_simint})
     find_package(simint 0.7 CONFIG REQUIRED COMPONENTS am${MAX_AM_ERI} der0)
     get_property(_loc TARGET simint::simint PROPERTY LOCATION)
@@ -145,7 +161,7 @@ else()
     message(STATUS "Disabled simint")
 endif()
 
-find_package(Libxc 4.0.2 CONFIG REQUIRED)
+find_package(Libxc 4.3.0 CONFIG REQUIRED)
 get_property(_loc TARGET Libxc::xc PROPERTY LOCATION)
 list(APPEND _addons ${_loc})
 message(STATUS "${Cyan}Using Libxc${ColourReset}: ${_loc} (version ${Libxc_VERSION})")
@@ -192,14 +208,14 @@ configure_file(run_psi4.py psi4 @ONLY)
 install(PROGRAMS ${CMAKE_BINARY_DIR}/psi4
         DESTINATION ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
 
+if(WIN32)
+    # Generate a batch script, which wraps "bin/psi4" script to "python bin/psi4"
+    configure_file(psi4.bat psi4.bat @ONLY)
+    install(PROGRAMS ${CMAKE_BINARY_DIR}/psi4.bat
+            DESTINATION ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR})
+endif()
+
     # <<<  install lib/  >>>
-install(DIRECTORY share/psi4/
-        DESTINATION ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}/psi4
-        PATTERN "*.pyc" EXCLUDE)
-
-install(DIRECTORY include/psi4/
-        DESTINATION ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_INCLUDEDIR}/psi4)
-
 install(DIRECTORY driver
         DESTINATION ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}${PYMOD_INSTALL_LIBDIR}/psi4
         FILES_MATCHING PATTERN "*.py")
@@ -213,14 +229,32 @@ install(FILES ${CMAKE_BINARY_DIR}/__init__.py
               ${CMAKE_BINARY_DIR}/extras.py
         DESTINATION ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}${PYMOD_INSTALL_LIBDIR}/psi4)
 
-install(FILES ../tests/pytest/conftest.py
-              ../tests/pytest/addons.py
-              ../tests/pytest/utils.py
-              ../tests/pytest/test_psi4.py
-              ../tests/pytest/test_addons.py
-              ../tests/pytest/test_molecule_to_string.py
-              ../tests/pytest/test_matrix.py
-              ../tests/pytest/test_qcvars.py
+install(FILES ../tests/pytests/__init__.py
+              ../tests/pytests/conftest.py
+              ../tests/pytests/addons.py
+              ../tests/pytests/utils.py
+              ../tests/pytests/test_psi4.py
+              ../tests/pytests/test_addons.py
+              ../tests/pytests/test_qcel_molparse_to_string.py
+              ../tests/pytests/test_matrix.py
+              ../tests/pytests/test_vector.py
+              ../tests/pytests/test_qcvars.py
+              ../tests/pytests/test_dft_benchmarks.py
+              ../tests/pytests/test_vibanalysis.py
+              ../tests/pytests/test_dftd3.py
+              ../tests/pytests/test_erisieve.py
+              ../tests/pytests/test_elec_fields.py
+              ../tests/pytests/test_fcidump_energy.py
+              ../tests/pytests/test_solvers.py
+              ../tests/pytests/test_tdscf_products.py
+              ../tests/pytests/test_tdscf_excitations.py
+              ../tests/pytests/test_misc.py
+              ../tests/pytests/test_multipole_potential.py
+              ../tests/pytests/test_dertype.py
+              ../tests/pytests/test_mp2.py
+              ../tests/pytests/test_qcng_dftd3_mp2d.py
+              ../tests/pytests/test_mp2d.py
+              ../tests/pytests/test_testing.py
         DESTINATION ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}${PYMOD_INSTALL_LIBDIR}/psi4/tests/)
 
     # <<<  install psi4 share/ & include/  >>>
@@ -228,7 +262,16 @@ install(FILES ../tests/pytest/conftest.py
 install(DIRECTORY share/psi4/
         DESTINATION ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}/psi4
         MESSAGE_NEVER
+        PATTERN "*.bin" EXCLUDE
         PATTERN "*.pyc" EXCLUDE)
+
+install(FILES share/psi4/quadratures/1_x/R_avail${_endian_ext}.bin
+        RENAME quadratures/1_x/R_avail.bin
+        DESTINATION ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}/psi4)
+
+install(FILES share/psi4/quadratures/1_x/error${_endian_ext}.bin
+        RENAME quadratures/1_x/error.bin
+        DESTINATION ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_DATADIR}/psi4)
 
 install(DIRECTORY include/psi4/
         DESTINATION ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_INCLUDEDIR}/psi4)

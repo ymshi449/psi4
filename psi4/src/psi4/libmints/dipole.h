@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -45,7 +45,7 @@ class Molecule;
  *  \brief Computes dipole integrals.
  *
  * Use an IntegralFactory to create this object. */
-class PSI_API DipoleInt : public OneBodyAOInt {
+class DipoleInt : public OneBodyAOInt {
     //! Obara and Saika recursion object to be used.
     ObaraSaikaTwoCenterRecursion overlap_recur_;
 
@@ -65,6 +65,7 @@ class PSI_API DipoleInt : public OneBodyAOInt {
 
     /// Returns the nuclear contribution to the dipole moment
     static SharedVector nuclear_contribution(std::shared_ptr<Molecule> mol, const Vector3 &origin);
+    static SharedMatrix nuclear_gradient_contribution(std::shared_ptr<Molecule> mol);
 };
 
 }  // namespace psi

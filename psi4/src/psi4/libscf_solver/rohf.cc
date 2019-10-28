@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -72,6 +72,7 @@ ROHF::ROHF(SharedWavefunction ref_wfn, std::shared_ptr<SuperFunctional> func, Op
 ROHF::~ROHF() {}
 
 void ROHF::common_init() {
+    name_ = "ROHF";
     Fa_ = SharedMatrix(factory_->create_matrix("Alpha Fock Matrix"));
     Fb_ = SharedMatrix(factory_->create_matrix("Beta Fock Matrix"));
     moFeff_ = SharedMatrix(factory_->create_matrix("F effective (MO basis)"));
@@ -113,7 +114,7 @@ void ROHF::format_guess() {
 
         // Symmetric Orthogonalization
     } else {
-        Ct_ = Matrix::triplet(X_, S_, Ca_);
+        Ct_ = linalg::triplet(X_, S_, Ca_);
     }
 }
 
@@ -326,8 +327,7 @@ double ROHF::compute_orbital_gradient(bool save_diis, int max_diis_vectors) {
     SharedMatrix Cav = Ct_->get_block({dim_zero, nmopi_}, {doccpi_, doccpi_ + virpi});
 
     // Back transform MOgradient
-    SharedMatrix gradient = Matrix::triplet(Cia, MOgradient, Cav, false, false, true);
-    double Drms = gradient->rms();
+    SharedMatrix gradient = linalg::triplet(Cia, MOgradient, Cav, false, false, true);
 
     if (save_diis) {
         if (initialized_diis_manager_ == false) {
@@ -339,15 +339,23 @@ double ROHF::compute_orbital_gradient(bool save_diis, int max_diis_vectors) {
         }
         diis_manager_->add_entry(2, gradient.get(), soFeff_.get());
     }
-    return Drms;
+
+    if (options_.get_bool("DIIS_RMS_ERROR")) {
+        return gradient->rms();
+    } else {
+        return gradient->absmax();
+    }
 }
 
 bool ROHF::diis() { return diis_manager_->extrapolate(1, soFeff_.get()); }
 
-void ROHF::form_initialF() {
+void ROHF::form_initial_F() {
     // Form the initial Fock matrix, closed and open variants
     Fa_->copy(H_);
-    Fa_->transform(X_);
+    Fa_->add(Ga_);
+    for (const auto& Vext : external_potentials_) {
+        Fa_->add(Vext);
+    }
     Fb_->copy(Fa_);
 
     if (debug_) {
@@ -462,7 +470,13 @@ void ROHF::form_initial_C() {
     // Form C = XC'
     Ca_->gemm(false, false, 1.0, X_, Ct_, 0.0);
 
-    if (print_ > 3) Ca_->print("outfile", "initial C");
+    find_occupation();
+
+    if (debug_) {
+        Ca_->print("outfile");
+        outfile->Printf("In ROHF::form_initial_C:\n");
+        Ct_->eivprint(epsilon_a_);
+    }
 }
 
 void ROHF::form_D() {
@@ -495,7 +509,7 @@ void ROHF::form_D() {
     }
 }
 
-double ROHF::compute_initial_E() { return 0.5 * (compute_E() + nuclearrep_); }
+double ROHF::compute_initial_E() { return nuclearrep_ + Dt_->vector_dot(H_); }
 
 double ROHF::compute_E() {
     double one_electron_E = Dt_->vector_dot(H_);
@@ -570,15 +584,16 @@ void ROHF::Hx(SharedMatrix x, SharedMatrix ret) {
         // right_ov -= Fb_oi x_iv
         C_DGEMM('N', 'N', occpi[h], virpi[h], doccpi_[h], -0.5, Fbp[0], nmopi_[h], xp[0], virpi[h], 1.0, rightp[0],
                 virpi[h]);
+        if (soccpi_[h]) {
+            // Socc terms
+            // left_av += 0.5 * x_oa.T Fb_ov
+            C_DGEMM('T', 'N', soccpi_[h], virpi[h], occpi[h], 0.5, xp[0], virpi[h], (Fbp[0] + doccpi_[h]), nmopi_[h],
+                    1.0, leftp[doccpi_[h]], virpi[h]);
 
-        // Socc terms
-        // left_av += 0.5 * x_oa.T Fb_ov
-        C_DGEMM('T', 'N', soccpi_[h], virpi[h], occpi[h], 0.5, xp[0], virpi[h], (Fbp[0] + doccpi_[h]), nmopi_[h], 1.0,
-                leftp[doccpi_[h]], virpi[h]);
-
-        // right_oa += 0.5 * Fb_op x_ap.T
-        C_DGEMM('N', 'T', occpi[h], soccpi_[h], pvir[h], 0.5, (Fbp[0] + occpi[h]), nmopi_[h],
-                (xp[doccpi_[h]] + soccpi_[h]), virpi[h], 1.0, rightp[0], virpi[h]);
+            // right_oa += 0.5 * Fb_op x_ap.T
+            C_DGEMM('N', 'T', occpi[h], soccpi_[h], pvir[h], 0.5, (Fbp[0] + occpi[h]), nmopi_[h],
+                    (xp[doccpi_[h]] + soccpi_[h]), virpi[h], 1.0, rightp[0], virpi[h]);
+        }
     }
 
     // => Two electron part <= //
@@ -870,7 +885,7 @@ int ROHF::soscf_update(double soscf_conv, int soscf_min_iter, int soscf_max_iter
     if (grad_rms < 1.e-14) {
         grad_rms = 1.e-14;  // Prevent rel denom from being too small
     }
-    double rms = sqrt(rconv / grad_rms);
+    double rms = std::sqrt(rconv / grad_rms);
     stop = std::time(nullptr);
     if (soscf_print) {
         outfile->Printf("    %-5s %11.3E %10ld\n", "Guess", rms, stop - start);
@@ -901,7 +916,7 @@ int ROHF::soscf_update(double soscf_conv, int soscf_min_iter, int soscf_max_iter
 
         // Get residual
         double rconv = r->sum_of_squares();
-        double rms = sqrt(rconv / grad_rms);
+        double rms = std::sqrt(rconv / grad_rms);
         stop = std::time(nullptr);
         if (soscf_print) {
             outfile->Printf("    %-5d %11.3E %10ld\n", cg_iter, rms, stop - start);
@@ -999,7 +1014,7 @@ bool ROHF::stability_analysis() {
         std::vector<SharedMatrix> virandsoc;
         virandsoc.push_back(Ca_->get_block({zero, nsopi_}, {nalphapi_, nmopi_}));
         virandsoc.push_back(Ca_->get_block({zero, nsopi_}, {doccpi_, nalphapi_}));
-        SharedMatrix Cvir = Matrix::horzcat(virandsoc);
+        SharedMatrix Cvir = linalg::horzcat(virandsoc);
         FIJ->transform(Fa_, Cocc);
         Fij->transform(Fb_, Cocc);
 
@@ -1317,6 +1332,19 @@ std::shared_ptr<ROHF> ROHF::c1_deep_copy(std::shared_ptr<BasisSet> basis) {
     if (X_) hf_wfn->X_->remove_symmetry(X_, SO2AO);
 
     return hf_wfn;
+}
+
+void ROHF::compute_SAD_guess(bool natorb) {
+    // Form the SAD guess
+    HF::compute_SAD_guess(natorb);
+    if (natorb) {
+        // Need to build Ct
+        Ct_ = linalg::triplet(X_, S_, Ca_);
+    } else {
+        // Form the total density matrix that's used in energy evaluation
+        Dt_->copy(Da_);
+        Dt_->add(Db_);
+    }
 }
 }  // namespace scf
 }  // namespace psi

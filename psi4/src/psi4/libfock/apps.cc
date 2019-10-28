@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -84,7 +84,7 @@ void RBase::set_reference(SharedWavefunction ref_wfn) {
         throw PSIEXCEPTION("RBase: Reference is not restricted");
     }
 
-    Eref_ = reference_wavefunction_->reference_energy();
+    Eref_ = reference_wavefunction_->energy();
 
     if (use_symmetry_) {
         Cocc_ = Ca_subset("SO", "OCC");
@@ -113,7 +113,7 @@ void RBase::set_reference(SharedWavefunction ref_wfn) {
     Cs.push_back(Caocc_);
     Cs.push_back(Cavir_);
     Cs.push_back(Cfvir_);
-    C_ = Matrix::horzcat(Cs);
+    C_ = linalg::horzcat(Cs);
 }
 void RBase::preiterations() {
     if (!jk_) {
@@ -1149,7 +1149,7 @@ double RTDHF::compute_energy() {
         //    std::vector<SharedMatrix > t = H->unpack(triplets[N]);
         //    for (int h = 0; h < Caocc_->nirrep(); h++) {
         //        // Spurious zero eigenvalue due to not enough states
-        //        if (N >= triplets[N]->dimpi()[h]) continue;
+        //        if (N >= linalg::triplets[N]->dimpi()[h]) continue;
         //        triplets_.push_back(t[h]);
         //        E_triplets_.push_back(E_triplets[N][h]);
         //    }
@@ -1487,7 +1487,7 @@ double RTDDFT::compute_energy() {
         //    std::vector<SharedMatrix > t = H->unpack(triplets[N]);
         //    for (int h = 0; h < Caocc_->nirrep(); h++) {
         //        // Spurious zero eigenvalue due to not enough states
-        //        if (N >= triplets[N]->dimpi()[h]) continue;
+        //        if (N >= linalg::triplets[N]->dimpi()[h]) continue;
         //        triplets_.push_back(t[h]);
         //        E_triplets_.push_back(E_triplets[N][h]);
         //    }

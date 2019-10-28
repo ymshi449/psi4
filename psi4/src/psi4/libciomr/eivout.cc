@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -50,7 +50,7 @@ namespace psi {
 **
 ** \ingroup CIOMR
 */
-void eivout(double **a, double *b, int m, int n, std::string out) {
+    void eivout(double **a, const double *b, int m, int n, std::string out) {
     std::shared_ptr<psi::PsiOutStream> printer = (out == "outfile" ? outfile : std::make_shared<PsiOutStream>(out));
     int ii, jj, kk, nn;
     int i, j;

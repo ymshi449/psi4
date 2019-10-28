@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -28,6 +28,8 @@
 
 #ifndef _psi_src_lib_libmints_osrecur_h
 #define _psi_src_lib_libmints_osrecur_h
+
+#include "psi4/pragma.h"
 
 namespace psi {
 
@@ -261,14 +263,18 @@ class ObaraSaikaTwoCenterElectricFieldGradient : public ObaraSaikaTwoCenterElect
 };
 
 /*! \ingroup MINTS
- *  \class ObaraSaikaTwoCenterEFPRecursion
- *  \brief Obara and Saika recursion object for potential integrals, and electric derivatives thereof, required in EFP.
+ *  \class ObaraSaikaTwoCenterMultipolePotentialRecursion
+ *  \brief Obara and Saika recursion object for potential integrals, and electric derivatives thereof, required in
+ * EFP/PE.
  */
-class ObaraSaikaTwoCenterEFPRecursion {
+class ObaraSaikaTwoCenterMultipolePotentialRecursion {
    protected:
     int max_am1_;
     int max_am2_;
     int size_;
+    bool do_dipole = false;
+    bool do_quadrupole = false;
+    bool do_octupole = false;
 
     double ***q_;
     double ***x_;
@@ -296,15 +302,15 @@ class ObaraSaikaTwoCenterEFPRecursion {
 
    private:
     // No default constructor
-    ObaraSaikaTwoCenterEFPRecursion();
+    ObaraSaikaTwoCenterMultipolePotentialRecursion();
     // No assignment operator
-    ObaraSaikaTwoCenterEFPRecursion &operator=(const ObaraSaikaTwoCenterEFPRecursion &);
+    ObaraSaikaTwoCenterMultipolePotentialRecursion &operator=(const ObaraSaikaTwoCenterMultipolePotentialRecursion &);
 
    public:
     /// Constructor, max_am1 and max_am2 are the max angular momentum on center 1 and 2.
     /// Needed to allocate enough memory.
-    ObaraSaikaTwoCenterEFPRecursion(int max_am1, int max_am2);
-    virtual ~ObaraSaikaTwoCenterEFPRecursion();
+    ObaraSaikaTwoCenterMultipolePotentialRecursion(int max_am1, int max_am2, int max_k);
+    virtual ~ObaraSaikaTwoCenterMultipolePotentialRecursion();
 
     /// Returns the potential integral 3D matrix
     double ***q() const { return q_; }

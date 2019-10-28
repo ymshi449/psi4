@@ -3,7 +3,7 @@
 #
 # Psi4: an open-source quantum chemistry software package
 #
-# Copyright (c) 2007-2018 The Psi4 Developers.
+# Copyright (c) 2007-2019 The Psi4 Developers.
 #
 # The copyrights for code used from other parties are included in
 # the corresponding files.
@@ -32,9 +32,14 @@ import sys
 import pickle
 import inspect
 import warnings
+import contextlib
 import collections
+from typing import List, Union
+
+import numpy as np
 
 from psi4 import core
+from psi4.metadata import __version__
 from .exceptions import ValidationError
 from . import p4regex
 
@@ -48,7 +53,6 @@ def kwargs_lower(kwargs):
 
     """
     caseless_kwargs = {}
-    # items() inefficient on Py2 but this is small dict
     for key, value in kwargs.items():
         lkey = key.lower()
         if lkey in ['subset', 'banner']:  # only kw for which case matters
@@ -70,7 +74,7 @@ def kwargs_lower(kwargs):
             elif p4regex.der2nd.match(str(lvalue)):
                 caseless_kwargs[lkey] = 2
             else:
-                raise KeyError('Derivative type key %s was not recognized' % str(key))
+                raise KeyError(f'Derivative type key {key} was not recognized')
 
         elif lvalue is None:
             caseless_kwargs[lkey] = None
@@ -126,8 +130,7 @@ def format_molecule_for_input(mol, name='', forcexyz=False):
             mol_string = mol.create_psi4_string_from_molecule()
         mol_name = mol.name() if name == '' else name
 
-    commands = """\nmolecule %s {\n%s%s\n}\n""" % (mol_name, mol_string,
-               '\nno_com\nno_reorient' if forcexyz else '')
+    commands = """\nmolecule %s {\n%s%s\n}\n""" % (mol_name, mol_string, '\nno_com\nno_reorient' if forcexyz else '')
     return commands
 
 
@@ -156,6 +159,8 @@ def format_options_for_input(molecule=None, **kwargs):
 
             if isinstance(chgdoptval, str):
                 commands += """core.set_global_option('%s', '%s')\n""" % (chgdopt, chgdoptval)
+
+
 # Next four lines were conflict between master and roa branches (TDC, 10/29/2014)
             elif isinstance(chgdoptval, int) or isinstance(chgdoptval, float):
                 commands += """core.set_global_option('%s', %s)\n""" % (chgdopt, chgdoptval)
@@ -202,10 +207,8 @@ def drop_duplicates(seq):
 
 
 def all_casings(input_string):
-    """Function to return a generator of all lettercase permutations
-    of *input_string*.
+    """Return a generator of all lettercase permutations of `input_string`."""
 
-    """
     if not input_string:
         yield ""
     else:
@@ -280,34 +283,97 @@ def extract_sowreap_from_output(sowout, quantity, sownum, linkage, allvital=Fals
         if allvital:
             raise ValidationError('Aborting upon output file \'%s.out\' not found.\n' % (sowout))
         else:
-            ValidationError('Aborting upon output file \'%s.out\' not found.\n' % (sowout))
             return 0.0
     else:
         while True:
             line = freagent.readline()
             if not line:
                 if E == 0.0:
-                    if allvital:
-                        raise ValidationError('Aborting upon output file \'%s.out\' has no %s RESULT line.\n' % (sowout, quantity))
-                    else:
-                        ValidationError('Aborting upon output file \'%s.out\' has no %s RESULT line.\n' % (sowout, quantity))
+                    raise ValidationError(
+                        'Aborting upon output file \'%s.out\' has no %s RESULT line.\n' % (sowout, quantity))
                 break
             s = line.strip().split(None, 10)
             if (len(s) != 0) and (s[0:3] == [quantity, 'RESULT:', 'computation']):
                 if int(s[3]) != linkage:
-                    raise ValidationError('Output file \'%s.out\' has linkage %s incompatible with master.in linkage %s.'
-                        % (sowout, str(s[3]), str(linkage)))
+                    raise ValidationError(
+                        'Output file \'%s.out\' has linkage %s incompatible with master.in linkage %s.' %
+                        (sowout, str(s[3]), str(linkage)))
                 if s[6] != str(sownum + 1):
-                    raise ValidationError('Output file \'%s.out\' has nominal affiliation %s incompatible with item %s.'
-                        % (sowout, s[6], str(sownum + 1)))
+                    raise ValidationError(
+                        'Output file \'%s.out\' has nominal affiliation %s incompatible with item %s.' %
+                        (sowout, s[6], str(sownum + 1)))
                 if label == 'electronic energy' and s[8:10] == ['electronic', 'energy']:
-                        E = float(s[10])
-                        core.print_out('%s RESULT: electronic energy = %20.12f\n' % (quantity, E))
+                    E = float(s[10])
+                    core.print_out('%s RESULT: electronic energy = %20.12f\n' % (quantity, E))
                 if label == 'electronic gradient' and s[8:10] == ['electronic', 'gradient']:
-                        E = ast.literal_eval(s[-1])
-                        core.print_out('%s RESULT: electronic gradient = %r\n' % (quantity, E))
+                    E = ast.literal_eval(s[-1])
+                    core.print_out('%s RESULT: electronic gradient = %r\n' % (quantity, E))
         freagent.close()
     return E
+
+
+_modules = [
+    # Psi4 Modules
+    "ADC",
+    "CCENERGY",
+    "CCEOM",
+    "CCDENSITY",
+    "CCLAMBDA",
+    "CCHBAR",
+    "CCRESPONSE",
+    "CCTRANSORT",
+    "CCTRIPLES",
+    "CPHF",
+    "DCT",
+    "DETCI",
+    "DFEP2",
+    "DFMP2",
+    "DFOCC",
+    "DMRG",
+    "EFP",
+    "FINDIF",
+    "FISAPT",
+    "FNOCC",
+    "GDMA",
+    "MCSCF",
+    "MINTS",
+    "MRCC",
+    "OCC",
+    "OPTKING",
+    "PCM",
+    "PSIMRCC",
+    "RESPONSE",
+    "SAPT",
+    "SCF",
+    "THERMO",
+    # External Modules
+    "CFOUR",
+]
+
+
+def reset_pe_options(pofm):
+    """Acts on Process::environment.options to clear it, the set it to state encoded in `pofm`.
+
+    Parameters
+    ----------
+    pofm : dict
+        Result of psi4.driver.p4util.prepare_options_for_modules(changedOnly=True, commandsInsteadDict=False)
+
+    Returns
+    -------
+    None
+
+    """
+    core.clean_options()
+
+    for go, dgo in pofm['GLOBALS'].items():
+        if dgo['has_changed']:
+            core.set_global_option(go, dgo['value'])
+
+    for module in _modules:
+        for lo, dlo in pofm[module].items():
+            if dlo['has_changed']:
+                core.set_local_option(module, lo, dlo['value'])
 
 
 def prepare_options_for_modules(changedOnly=False, commandsInsteadDict=False):
@@ -324,17 +390,6 @@ def prepare_options_for_modules(changedOnly=False, commandsInsteadDict=False):
        - command return doesn't revoke has_changed setting for unchanged with changedOnly=False
 
     """
-    modules = [
-        # PSI4 Modules
-        "ADC", "CCENERGY", "CCEOM", "CCDENSITY", "CCLAMBDA", "CCHBAR",
-        "CCRESPONSE", "CCSORT", "CCTRIPLES", "CLAG", "CPHF", "CIS",
-        "DCFT", "DETCI", "DFMP2", "DFTSAPT", "FINDIF", "FNOCC", "LMP2",
-        "MCSCF", "MINTS", "MRCC", "OCC", "OPTKING", "PSIMRCC", "RESPONSE",
-        "SAPT", "SCF", "STABILITY", "THERMO", "TRANSQT", "TRANSQT2",
-        # External Modules
-        "CFOUR",
-        ]
-
     options = collections.defaultdict(dict)
     commands = ''
     for opt in core.get_global_option_list():
@@ -342,16 +397,15 @@ def prepare_options_for_modules(changedOnly=False, commandsInsteadDict=False):
             if opt in ['DFT_CUSTOM_FUNCTIONAL', 'EXTERN']:  # Feb 2017 hack
                 continue
             val = core.get_global_option(opt)
-            options['GLOBALS'][opt] = {'value': val,
-                                       'has_changed': core.has_global_option_changed(opt)}
-            if isinstance(val, basestring):
+            options['GLOBALS'][opt] = {'value': val, 'has_changed': core.has_global_option_changed(opt)}
+            if isinstance(val, str):
                 commands += """core.set_global_option('%s', '%s')\n""" % (opt, val)
             else:
                 commands += """core.set_global_option('%s', %s)\n""" % (opt, val)
             #if changedOnly:
             #    print('Appending module %s option %s value %s has_changed %s.' % \
             #        ('GLOBALS', opt, core.get_global_option(opt), core.has_global_option_changed(opt)))
-        for module in modules:
+        for module in _modules:
             if core.option_exists_in_module(module, opt):
                 hoc = core.has_option_changed(module, opt)
                 if hoc or not changedOnly:
@@ -452,3 +506,61 @@ def expand_psivars(pvdefs):
             core.set_variable(pvar, result)
             if verbose >= 2:
                 print("""SUCCESS""")
+
+
+def provenance_stamp(routine):
+    """Return dictionary satisfying QCSchema,
+    https://github.com/MolSSI/QCSchema/blob/master/qcschema/dev/definitions.py#L23-L41
+    with Psi4's credentials for creator and version. The
+    generating routine's name is passed in through `routine`.
+
+    """
+    return {'creator': 'Psi4', 'version': __version__, 'routine': routine}
+
+
+def plump_qcvar(val: Union[float, str, List], shape_clue: str, ret='np') -> Union[float, 'np.ndarray', 'psi4.core.Matrix']:
+    """Prepare serialized QCVariable for set_variable by convert flat arrays into shaped ones and floating strings.
+
+    Parameters
+    ----------
+    val :
+        flat (?, ) list or scalar or string, probably from JSON storage.
+    shape_clue : str
+        Label that includes (case insensitive) one of the following as
+        a clue to the array's natural dimensions: 'gradient', 'hessian'
+    ret : {'np', 'psi4'}
+        Whether to return `np.ndarray` or `psi4.core.Matrix`.
+
+    Returns
+    -------
+    float or np.ndarray or psi4.core.Matrix
+        Reshaped array of type `ret` with natural dimensions of `shape_clue`.
+
+    Raises
+    ------
+    TODO
+
+    """
+    if isinstance(val, (np.ndarray, core.Matrix)):
+        raise TypeError
+    elif isinstance(val, list):
+        tgt = np.asarray(val)
+    else:
+        # presumably scalar. may be string
+        return float(val)
+    # TODO choose float vs Decimal for return if string?
+
+    if 'gradient' in shape_clue.lower():
+        reshaper = (-1, 3)
+    elif 'hessian' in shape_clue.lower():
+        ndof = int(math.sqrt(len(tgt)))
+        reshaper = (ndof, ndof)
+    else:
+        raise ValidationError(f'Uncertain how to reshape array: {shape_clue}')
+
+    if ret == 'np':
+        return tgt.reshape(reshaper)
+    elif ret == 'psi4':
+        return core.Matrix.from_array(tgt.reshape(reshaper))
+    else:
+        raise ValidationError(f'Return type not among [np, psi4]: {ret}')

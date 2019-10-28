@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -37,7 +37,7 @@ class CdSalcList;
 class OneBodyAOInt;
 class IntegralFactory;
 
-class OneBodySOInt {
+class PSI_API OneBodySOInt {
    protected:
     std::shared_ptr<OneBodyAOInt> ob_;
     const IntegralFactory* integral_;

@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -64,39 +64,39 @@ void get_moinfo(std::shared_ptr<Wavefunction> wfn);
 void get_frozen();
 void get_params(Options &options);
 void exit_io();
-void onepdm(struct RHO_Params);
-void sortone(struct RHO_Params);
+void onepdm(const struct RHO_Params&);
+void sortone(const struct RHO_Params&);
 void twopdm();
-void energy(struct RHO_Params);
+void energy(const struct RHO_Params&);
 // void resort_tei();
 // void resort_gamma();
-void lag(struct RHO_Params rho_params);
+void lag(const struct RHO_Params& rho_params);
 void build_X();
 void build_A();
 void build_Z();
 void relax_I();
-void relax_D(struct RHO_Params rho_params);
+void relax_D(const struct RHO_Params& rho_params);
 void sortI();
-void fold(struct RHO_Params rho_params);
-void deanti(struct RHO_Params rho_params);
+void fold(const struct RHO_Params& rho_params);
+void deanti(const struct RHO_Params& rho_params);
 void add_ref_RHF(struct iwlbuf *);
 void add_ref_ROHF(struct iwlbuf *);
 void add_ref_UHF(struct iwlbuf *, struct iwlbuf *, struct iwlbuf *);
 void add_core_ROHF(struct iwlbuf *);
 // void add_core_UHF(struct iwlbuf *, struct iwlbuf *, struct iwlbuf *);
-void dump_RHF(struct iwlbuf *, struct RHO_Params rho_params);
-void dump_ROHF(struct iwlbuf *, struct RHO_Params rho_params);
-void dump_UHF(struct iwlbuf *, struct iwlbuf *, struct iwlbuf *, struct RHO_Params rho_params);
+void dump_RHF(struct iwlbuf *, const struct RHO_Params& rho_params);
+void dump_ROHF(struct iwlbuf *, const struct RHO_Params& rho_params);
+void dump_UHF(struct iwlbuf *, struct iwlbuf *, struct iwlbuf *, const struct RHO_Params& rho_params);
 void kinetic(std::shared_ptr<Wavefunction> wfn);
 void probable();
 int **cacheprep_rhf(int level, int *cachefiles);
 int **cacheprep_uhf(int level, int *cachefiles);
 void cachedone_rhf(int **cachelist);
 void cachedone_uhf(int **cachelist);
-void setup_LR(struct RHO_Params);
+void setup_LR(const struct RHO_Params&);
 void G_build();
-void x_oe_intermediates(struct RHO_Params);
-void x_onepdm(struct RHO_Params);
+void x_oe_intermediates(const struct RHO_Params&);
+void x_onepdm(const struct RHO_Params&);
 void x_te_intermediates();
 void x_Gijkl();
 void x_Gabcd();
@@ -110,25 +110,25 @@ void x_xi_zero();
 void x_xi2();
 void x_xi_oe_intermediates();
 // void G_norm();
-void zero_onepdm(struct RHO_Params rho_params);
+void zero_onepdm(const struct RHO_Params& rho_params);
 void zero_twopdm();
 void get_rho_params(Options &options);
 void get_td_params(Options &options);
-void td_setup(struct TD_Params S);
-void tdensity(struct TD_Params S);
+void td_setup(const struct TD_Params& S);
+void tdensity(const struct TD_Params& S);
 void td_print();
 void oscillator_strength(std::shared_ptr<Wavefunction> wfn, struct TD_Params *S);
 void rotational_strength(MintsHelper &mints, struct TD_Params *S);
 void ael(struct RHO_Params *rho_params);
 void cleanup();
 void td_cleanup();
-void x_oe_intermediates_rhf(struct RHO_Params rho_params);
+void x_oe_intermediates_rhf(const struct RHO_Params& rho_params);
 void x_te_intermediates_rhf();
 void x_xi_intermediates();
 void V_build();
 void V_cc2();
-void ex_tdensity(char hand, struct TD_Params S, struct TD_Params U);
-void ex_td_setup(struct TD_Params S, struct TD_Params U);
+void ex_tdensity(char hand, const struct TD_Params& S, const struct TD_Params& U);
+void ex_td_setup(const struct TD_Params& S, const struct TD_Params& U);
 void ex_td_cleanup();
 void ex_oscillator_strength(std::shared_ptr<Wavefunction> wfn, struct TD_Params *S, struct TD_Params *U,
                             struct XTD_Params *xtd_data);
@@ -367,7 +367,7 @@ PsiReturnType ccdensity(std::shared_ptr<Wavefunction> ref_wfn, Options &options)
         /* Transform Da/b to so basis and set in wfn */
         if (ref_wfn->same_a_b_dens()) {
             Pa->scale(0.5);
-            auto Pa_so = Matrix::triplet(ref_wfn->Ca(), Pa, ref_wfn->Ca(), false, false, true);
+            auto Pa_so = linalg::triplet(ref_wfn->Ca(), Pa, ref_wfn->Ca(), false, false, true);
             if (i == 0) {
                 auto ref_Da_so = ref_wfn->Da();
                 ref_Da_so->copy(Pa_so);
@@ -375,8 +375,8 @@ PsiReturnType ccdensity(std::shared_ptr<Wavefunction> ref_wfn, Options &options)
                 ref_wfn->set_array_variable("CC ROOT " + std::to_string(i) + " Da", Pa_so);
             }
         } else {
-            auto Pa_so = Matrix::triplet(ref_wfn->Ca(), Pa, ref_wfn->Ca(), false, false, true);
-            auto Pb_so = Matrix::triplet(ref_wfn->Cb(), Pb, ref_wfn->Cb(), false, false, true);
+            auto Pa_so = linalg::triplet(ref_wfn->Ca(), Pa, ref_wfn->Ca(), false, false, true);
+            auto Pb_so = linalg::triplet(ref_wfn->Cb(), Pb, ref_wfn->Cb(), false, false, true);
             if (i == 0) {
                 auto ref_Da_so = ref_wfn->Da();
                 auto ref_Db_so = ref_wfn->Db();

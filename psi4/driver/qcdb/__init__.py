@@ -3,7 +3,7 @@
 #
 # Psi4: an open-source quantum chemistry software package
 #
-# Copyright (c) 2007-2018 The Psi4 Developers.
+# Copyright (c) 2007-2019 The Psi4 Developers.
 #
 # The copyrights for code used from other parties are included in
 # the corresponding files.
@@ -29,9 +29,6 @@
 databases. Contains Molecule class and physical constants from psi4 suite.
 
 """
-from __future__ import absolute_import
-from __future__ import print_function
-from __future__ import division
 __version__ = '0.4'
 __author__ = 'Lori A. Burns'
 
@@ -59,5 +56,6 @@ from . import gradparse
 
 # Load items that are useful to access from an input file
 from .psiutil import *
+from .testing import *
 
 from .util import *

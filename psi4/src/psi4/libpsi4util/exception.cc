@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -26,16 +26,15 @@
  * @END LICENSE
  */
 
+#include "psi4/libpsi4util/exception.h"
+
 #ifndef _MSC_VER
 #include <execinfo.h>
 #include <cxxabi.h>
 #endif
 
-#include <vector>
-#include <sstream>
-#include <cstring>
 #include <cstdlib>
-#include "psi4/libpsi4util/exception.h"
+#include <vector>
 
 namespace psi {
 
@@ -102,11 +101,11 @@ const char *PsiException::file() const noexcept { return file_; }
 
 int PsiException::line() const noexcept { return line_; }
 
-const char *PsiException::location() const noexcept {
+std::string PsiException::location() const noexcept {
     std::stringstream sstr;
     sstr << "file: " << file_ << "\n";
     sstr << "line: " << line_;
-    return sstr.str().c_str();
+    return sstr.str();
 }
 
 PsiException::~PsiException() noexcept {}
@@ -166,65 +165,6 @@ StepSizeError<T>::StepSizeError(std::string value_name, T max, T actual, const c
 
 template <class T>
 StepSizeError<T>::~StepSizeError() noexcept {}
-
-template <class T>
-MaxIterationsExceeded<T>::MaxIterationsExceeded(std::string routine_name, T max, const char *_file, int _line) noexcept
-    : LimitExceeded<T>(routine_name + " iterations", max, max, _file, _line) {}
-
-template <class T>
-MaxIterationsExceeded<T>::~MaxIterationsExceeded() noexcept {}
-
-template <class T>
-ConvergenceError<T>::ConvergenceError(std::string routine_name, T max, double _desired_accuracy,
-                                      double _actual_accuracy, const char *_file, int _line) noexcept
-    : MaxIterationsExceeded<T>(routine_name + " iterations", max, _file, _line),
-      desired_acc_(_desired_accuracy),
-      actual_acc_(_actual_accuracy) {
-    std::stringstream sstr;
-    sstr << "could not converge " << routine_name << ".  desired " << _desired_accuracy << " but got "
-         << _actual_accuracy << "\n";
-    sstr << LimitExceeded<T>::description();
-    PsiException::rewrite_msg(sstr.str());
-}
-
-template <class T>
-ConvergenceError<T>::~ConvergenceError() noexcept {}
-
-template <class T>
-double ConvergenceError<T>::desired_accuracy() const noexcept {
-    return desired_acc_;
-}
-
-template <class T>
-double ConvergenceError<T>::actual_accuracy() const noexcept {
-    return actual_acc_;
-}
-
-template <>
-ConvergenceError<int>::ConvergenceError(std::string routine_name, int max, double _desired_accuracy,
-                                        double _actual_accuracy, const char *_file, int _line) throw()
-    : MaxIterationsExceeded<int>(routine_name + " iterations", max, _file, _line),
-      desired_acc_(_desired_accuracy),
-      actual_acc_(_actual_accuracy) {
-    std::stringstream sstr;
-    sstr << "could not converge " << routine_name << ".  desired " << _desired_accuracy << " but got "
-         << _actual_accuracy << "\n";
-    sstr << LimitExceeded<int>::description();
-    PsiException::rewrite_msg(sstr.str());
-}
-
-template <>
-ConvergenceError<int>::~ConvergenceError() throw() {}
-
-template <>
-double ConvergenceError<int>::desired_accuracy() const throw() {
-    return desired_acc_;
-}
-
-template <>
-double ConvergenceError<int>::actual_accuracy() const throw() {
-    return actual_acc_;
-}
 
 template <class T>
 ResourceAllocationError<T>::ResourceAllocationError(std::string resource_name, T max, T actual, const char *_file,

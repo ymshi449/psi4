@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2018 The Psi4 Developers.
+ * Copyright (c) 2007-2019 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -35,6 +35,8 @@
 #include <tuple>
 #include "typedefs.h"
 
+#include "psi4/pragma.h"
+
 namespace psi {
 
 class Matrix;
@@ -46,7 +48,7 @@ class BasisSet;
  *  Stores external potential field, computes external potential matrix
  *  Like standard potential integrals, this is negative definite (electrons are the test charge)
  */
-class ExternalPotential {
+class PSI_API ExternalPotential {
    protected:
     /// Debug flag
     int debug_;

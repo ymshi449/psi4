@@ -3,7 +3,7 @@
 #
 # Psi4: an open-source quantum chemistry software package
 #
-# Copyright (c) 2007-2018 The Psi4 Developers.
+# Copyright (c) 2007-2019 The Psi4 Developers.
 #
 # The copyrights for code used from other parties are included in
 # the corresponding files.
@@ -46,7 +46,7 @@ def _compute_fxc(PQrho, half_Saux, halfp_Saux, rho_thresh=1.e-8):
     naux = PQrho.shape[0]
 
     # Level it out
-    PQrho_lvl = core.Matrix.triplet(half_Saux, PQrho, half_Saux, False, False, False)
+    PQrho_lvl = core.triplet(half_Saux, PQrho, half_Saux, False, False, False)
 
     # Rotate into a diagonal basis
     rho = core.Vector("rho eigenvalues", naux)
@@ -75,10 +75,10 @@ def _compute_fxc(PQrho, half_Saux, halfp_Saux, rho_thresh=1.e-8):
     # Rotate back
     Ul = U.clone()
     Ul.np[:] *= out["V_RHO_A_RHO_A"].np
-    tmp = core.Matrix.doublet(Ul, U, False, True)
+    tmp = core.doublet(Ul, U, False, True)
 
     # Undo the leveling
-    return core.Matrix.triplet(halfp_Saux, tmp, halfp_Saux, False, False, False)
+    return core.triplet(halfp_Saux, tmp, halfp_Saux, False, False, False)
 
 
 def df_fdds_dispersion(primary, auxiliary, cache, leg_points=10, leg_lambda=0.3, do_print=True):
@@ -144,14 +144,14 @@ def df_fdds_dispersion(primary, auxiliary, cache, leg_points=10, leg_lambda=0.3,
 
         # Coupled A
         X_A_coupled = X_A.clone()
-        XSW_A = core.Matrix.triplet(X_A, metric_inv, W_A, False, False, False)
+        XSW_A = core.triplet(X_A, metric_inv, W_A, False, False, False)
 
         amplitude_inv = metric.clone()
         amplitude_inv.axpy(1.0, XSW_A)
         nremoved = 0
         amplitude = amplitude_inv.pseudoinverse(1.e-13, nremoved)
         amplitude.transpose_this()  # Why is this coming out transposed?
-        X_A_coupled.axpy(-1.0, core.Matrix.triplet(XSW_A, amplitude, X_A, False, False, False))
+        X_A_coupled.axpy(-1.0, core.triplet(XSW_A, amplitude, X_A, False, False, False))
         del XSW_A, amplitude
 
         X_B = fdds_obj.form_unc_amplitude("B", omega)
@@ -159,13 +159,13 @@ def df_fdds_dispersion(primary, auxiliary, cache, leg_points=10, leg_lambda=0.3,
 
         # Coupled B
         X_B_coupled = X_B.clone()
-        XSW_B = core.Matrix.triplet(X_B, metric_inv, W_B, False, False, False)
+        XSW_B = core.triplet(X_B, metric_inv, W_B, False, False, False)
 
         amplitude_inv = metric.clone()
         amplitude_inv.axpy(1.0, XSW_B)
         amplitude = amplitude_inv.pseudoinverse(1.e-13, nremoved)
         amplitude.transpose_this()  # Why is this coming out transposed?
-        X_B_coupled.axpy(-1.0, core.Matrix.triplet(XSW_B, amplitude, X_B, False, False, False))
+        X_B_coupled.axpy(-1.0, core.triplet(XSW_B, amplitude, X_B, False, False, False))
         del XSW_B, amplitude
 
         # Make sure the results are symmetrized
@@ -174,11 +174,11 @@ def df_fdds_dispersion(primary, auxiliary, cache, leg_points=10, leg_lambda=0.3,
             tensor.scale(0.5)
 
         # Combine
-        tmp_uc = core.Matrix.triplet(metric_inv, X_A, metric_inv, False, False, False)
+        tmp_uc = core.triplet(metric_inv, X_A, metric_inv, False, False, False)
         value_uc = tmp_uc.vector_dot(X_B)
         del tmp_uc
 
-        tmp_c = core.Matrix.triplet(metric_inv, X_A_coupled, metric_inv, False, False, False)
+        tmp_c = core.triplet(metric_inv, X_A_coupled, metric_inv, False, False, False)
         value_c = tmp_c.vector_dot(X_B_coupled)
         del tmp_c
 
@@ -239,6 +239,11 @@ def df_mp2_fisapt_dispersion(wfn, primary, auxiliary, cache, do_print=True):
     ret = {}
     ret["Exch-Disp20,u"] = scalars["Exch-Disp20"]
     ret["Disp20,u"] = scalars["Disp20"]
+
+    if core.get_option("SAPT", "DO_DISP_EXCH_SINF"):
+        fisapt.sinf_disp(matrix_cache, vector_cache, False)
+        scalars = fisapt.scalars()
+
     return ret
 
 
