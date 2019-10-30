@@ -1,0 +1,54 @@
+import psi4
+import pdft
+from cubeprop import Cube
+
+Monomer_1 =  psi4.geometry("""
+@H  -1 0 0
+@H  0 0 0
+H  1 0 0
+units bohr
+symmetry c1
+""")
+
+Monomer_2 =  psi4.geometry("""
+H  -1 0 0
+@H  0 0 0
+@H  1 0 0
+units bohr
+symmetry c1
+""")
+Full_Molec =  psi4.geometry("""
+1 2
+H  -1 0 0
+@H  0 0 0
+H  1 0 0
+units bohr
+symmetry c1""")
+
+Full_Molec.set_name("H2P")
+
+#Psi4 Options:
+psi4.set_options({'DFT_SPHERICAL_POINTS': 110,
+                  'DFT_RADIAL_POINTS':    5,
+                  'REFERENCE' : 'RKS'})
+
+psi4.set_options({'cubeprop_tasks' : ['density'],
+                 'cubic_grid_spacing': [0.1, 0.1, 0.1]})
+
+# energy_3, wfn_3 = psi4.energy("SVWN/cc-pVDZ", molecule=mol_geometry, return_wfn=True)
+
+#Make fragment calculations:
+f1  = pdft.U_Molecule(Monomer_2,  "cc-pVDZ", "SVWN")
+f2  = pdft.U_Molecule(Monomer_1,  "cc-pVDZ", "SVWN")
+mol = pdft.U_Molecule(Full_Molec, "cc-pVDZ", "SVWN")
+
+
+#Start a pdft systemm, and perform calculation to find vp
+pdfter = pdft.U_Embedding([f1, f2], mol)
+vp,vpa,vpb = pdfter.find_vp_response(maxiter=21, lambd=0.1, atol=1e-5)
+#%%
+# pdfter.get_energies()
+#%%
+# vp_plot = Cube(mol.wfn)
+#%%
+# vp_plot.plot_matrix(vp, 2,60)
