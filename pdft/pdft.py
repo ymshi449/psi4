@@ -660,6 +660,7 @@ class U_Molecule():
 
             dRMS = 0.5 * (np.mean(diisa_e.np**2)**0.5 + np.mean(diisb_e.np**2)**0.5)
 
+            print(F'SCF Convergence: dE = {abs(SCF_E - Eold)} dDIIS = {dRMS}')
             if (abs(SCF_E - Eold) < E_conv) and (dRMS < D_conv):
                 break
 
@@ -674,7 +675,8 @@ class U_Molecule():
             C_b, Cocc_b, D_b, eigs_b = build_orbitals(F_b, self.A, self.nbeta)
 
             if SCF_ITER == maxiter:
-                raise Exception("Maximum number of SCF cycles exceeded.")
+                # raise Exception("Maximum number of SCF cycles exceeded.")
+                print("Maximum number of SCF cycles exceeded.")
 
         #print('\nFinal SCF energy: %.8f hartree' % SCF_E)
         #print(F'Core                 : {2.0 * self.H.vector_dot(D)}')
@@ -738,10 +740,10 @@ class U_Embedding:
 
         for i in range(1,len(self.fragments)):
             sum_b +=  self.fragments[i].Db.np
-        self.fragments_Da = sum_a * 0.5
-        self.fragments_Db = sum_b * 0.5
+        self.fragments_Da = sum_a
+        self.fragments_Db = sum_b
 
-    def find_vp_response(self, maxiter=21, lambd=None, atol=2e-4, guess=None):
+    def find_vp_response(self, maxiter=21, beta=None, atol=2e-4, guess=None):
         """
         Using the inverse of static response function to update dvp from a dn.
         See Jonathan's Thesis 5.4 5.5 5.6.
@@ -764,8 +766,11 @@ class U_Embedding:
         S_PQinv = 0.5 * (S_PQinv.T + S_PQinv)
         fouroverlap = np.einsum('Pmn,PQ,Qrs->mnrs', S_Pmn_ao, S_PQinv, S_Pmn_ao, optimize=True)
 
-        old_D_conv = np.inf  # rho convergence (2 norm) of last iteration
+        old_rho_conv = np.inf  # rho convergence (2 norm) of last iteration
         lamdb_lastupdate_iter = 0
+        rho_convergance = []
+        Ep_convergence = []
+        _,_,_,w = self.molecule.Vpot.get_np_xyzw()
 
         if guess is None:
             vp_a = psi4.core.Matrix.from_array(np.zeros_like(self.molecule.Da.np))
@@ -775,9 +780,9 @@ class U_Embedding:
         # else:
         #    vp_guess
 
-        if lambd is None:
-            lambd = 1.0
-        for scf_step in range(maxiter + 1):
+        if beta is None:
+            beta = 1.0
+        for scf_step in range(1, maxiter + 1):
             """
             For each fragment, v_p(r) = \sum_{alpha}C_{ij}dD_{mn}\phi_i(r)\phi_j(r)(ijmn) = C_{ij}dD_{mn}\phi_i(r)\phi_j(r)(Cij)(CD)^{-1}(Dmn)
             v_{p,uv} = \sum_{alpha}C_{ij}dD_{mn}(Aij)(AB)^{-1}(Buv)(Cij)(CD)^{-1}(Dmn)
@@ -785,6 +790,23 @@ class U_Embedding:
             1) Un-orthogonalized
             2) I did not use alpha and beta wave functions to update Kai inverse. I should.
             """
+            #   Update rho and change beta
+            self.get_density_sum()
+            rho_molecule = self.molecule.to_grid(self.molecule.Da.np, Duv_b=self.molecule.Db.np)
+            rho_fragment = self.molecule.to_grid(self.fragments_Da, Duv_b=self.fragments_Db)
+            # Based on the naive hope, whenever the current lamdb does not improve the density, get a smaller one.
+            if old_rho_conv < np.sum(np.abs(rho_fragment - rho_molecule)*w):
+                beta *= 0.7
+                lamdb_lastupdate_iter = scf_step
+            # If some lamdb has beed updating for a more than a long period, try to increase it to converge faster.
+            elif (scf_step - lamdb_lastupdate_iter) > 21:
+                beta /= 0.8
+                lamdb_lastupdate_iter = scf_step
+
+            old_rho_conv = np.sum(np.abs(rho_fragment - rho_molecule)*w)
+            rho_convergance.append(old_rho_conv)
+
+            ## vp calculation
             # Store \sum_{alpha}C_{ij}
             C_a = np.zeros_like(S_Pmn_ao)
             C_b = np.zeros_like(S_Pmn_ao)
@@ -817,8 +839,8 @@ class U_Embedding:
             DaDiff = np.copy(self.fragments_Da - self.molecule.Da.np)
             DbDiff = np.copy(self.fragments_Db - self.molecule.Db.np)
             # vp(r) = C_{Cab}(CD)^{-1}(Dmn)dD_(mn)\phi_a(r)\phi_b(r) = dvp_a/b_r_{ab}\phi_a(r)\phi_b(r)
-            delta_vp_a = np.einsum('Cab,CD,Dmn,mn -> ab', C_a, S_PQinv, S_Pmn_ao, -lambd*DaDiff, optimize=True)
-            delta_vp_b = np.einsum('Cab,CD,Dmn,mn -> ab', C_b, S_PQinv, S_Pmn_ao, -lambd*DbDiff, optimize=True)
+            delta_vp_a = np.einsum('Cab,CD,Dmn,mn -> ab', C_a, S_PQinv, S_Pmn_ao, -beta*DaDiff, optimize=True)
+            delta_vp_b = np.einsum('Cab,CD,Dmn,mn -> ab', C_b, S_PQinv, S_Pmn_ao, -beta*DbDiff, optimize=True)
 
             delta_vp_a = 0.5*(delta_vp_a.T + delta_vp_a)
             delta_vp_b = 0.5*(delta_vp_b.T + delta_vp_b)
@@ -833,42 +855,31 @@ class U_Embedding:
             vp_b.axpy(1.0, delta_vp_b)
             vp_total.axpy(1.0, vp_a)
             vp_total.axpy(1.0, vp_b)
-
+            vp = [vp_a, vp_b]
             # Update fragments info with vp we just git
-            total_energies = 0.0
+            Ef = 0.0
 
             # Check for convergence
             for i in range(self.nfragments):
-                self.fragments[i].scf(vp_add=True, vp_matrix=vp)
-                total_energies += self.fragments[i].energy
+                self.fragments[i].scf(vp_add=True, vp_matrix=vp, maxiter=1400)
+                Ef += self.fragments[i].energy
+            Ef = Ef
+            Ep_convergence.append(self.molecule.energy - self.molecule.Enuc - Ef)
             # if np.isclose( total_densities.sum(),self.molecule.D.sum(), atol=1e-5) :
-            if np.isclose(total_energies, self.molecule.energy, atol):
+            if np.isclose(Ef, self.molecule.energy, atol):
                 print("I WILL BREAK!")
                 break
-            elif lambd < 1e-10:
+            elif beta < 1e-10:
                 print("Break because even small step length can not improve.")
                 break
             elif scf_step == maxiter:
-               raise Exception("Maximum number of SCF cycles exceeded for vp.")
 
-            #   Update rho
-            self.get_density_sum()
-            rho_molecule = self.molecule.to_grid(self.molecule.Da.np, Duv_b=self.molecule.Db.np)
-            rho_fragment = self.molecule.to_grid(self.fragments_Da, Duv_b=self.fragments_Db)
-            self.get_density_sum()
-            # Based on the naive hope, whenever the current lamdb does not improve the density, get a smaller one.
-            if old_D_conv < np.sum(np.abs(rho_fragment - rho_molecule)):
-                lambd *= 0.1
-                lamdb_lastupdate_iter = scf_step
-            # If some lamdb has beed updating for a more than a long period, try to increase it to converge faster.
-            elif (scf_step - lamdb_lastupdate_iter) > 21:
-                lambd /= 0.99
-                lamdb_lastupdate_iter = scf_step
+                # raise Exception("Maximum number of SCF cycles exceeded for vp.")
+                print("Maximum number of SCF cycles exceeded for vp.")
 
-            old_D_conv = np.sum(np.abs(rho_fragment - rho_molecule))
             print(
-                F'Iteration: {scf_step} lamdb = {lambd} Delta_E = {total_energies - self.molecule.energy} Delta_D = {self.fragments_Da.sum() + self.fragments_Db.sum() - (self.molecule.Da.np.sum() + self.molecule.Db.np.sum())} Delta_Rho = {old_D_conv}')
-        return vp_a, vp_b, vp_total
+                F'Iteration: {scf_step-1} lamdb = {beta} Delta_D = {self.fragments_Da.sum() + self.fragments_Db.sum() - (self.molecule.Da.np.sum() + self.molecule.Db.np.sum())} Delta_Rho = {old_rho_conv}')
+        return vp_a, vp_b, vp_total, rho_convergance, Ep_convergence
 
     def find_vp(self, beta, guess=None, maxiter=10, atol=2e-4):
         """
@@ -886,6 +897,7 @@ class U_Embedding:
             Vp to be added to fragment ks matrix
 
         """
+        _,_,_,w = self.molecule.Vpot.get_np_xyzw()
         if guess is None:
             vp_a = psi4.core.Matrix.from_array(np.zeros_like(self.molecule.Da.np))
             vp_b = psi4.core.Matrix.from_array(np.zeros_like(self.molecule.Db.np))
@@ -894,46 +906,63 @@ class U_Embedding:
         #else:
         #    vp_guess
 
-        for scf_step in range(maxiter+1):
+        S, D_mnQ, S_pmn, Spq = fouroverlap(self.molecule.wfn, self.molecule.geometry, self.molecule.basis, self.molecule.mints)
 
-            total_density_a = np.zeros_like(self.molecule.Da.np)
-            total_density_b = np.zeros_like(self.molecule.Db.np)
-            total_energies = 0.0
-            density_convergence = 0.0
-
-            for i in range(self.nfragments):
-
-                density_a, density_b, energy, _  = self.fragments[i].scf(vp_add=True, vp_matrix=vp)
-
-                total_density_a += density_a.np 
-                total_density_b += density_b.np
-
-                total_energies  += energy
-
-            #if np.isclose( total_densities.sum(),self.molecule.D.sum(), atol=1e-5) :
-            if np.isclose(total_energies, self.molecule.energy, atol):
-                break
-
+        ## Tracking rho and changing beta
+        old_rho_conv = np.inf
+        beta_lastupdate_iter = 0
+        rho_convergence = []
+        Ep_convergence = []
+        for scf_step in range(1,maxiter+1):
             #if scf_step == maxiter:
             #    raise Exception("Maximum number of SCF cycles exceeded for vp.")
+            self.get_density_sum()
+            Ef = 0.0
+            ## Tracking rho and changing beta
+            rho_molecule = self.molecule.to_grid(self.molecule.Da.np, Duv_b=self.molecule.Db.np)
+            rho_fragment = self.molecule.to_grid(self.fragments_Da, Duv_b=self.fragments_Db)
+            # Based on the naive hope, whenever the current lamdb does not improve the density, get a smaller one.
+            # if old_rho_conv < np.linalg.norm(rho_fragment - rho_molecule, ord=1):
+            if old_rho_conv < np.sum(np.abs(rho_fragment - rho_molecule)*w):
+                beta *= 0.9
+                beta_lastupdate_iter = scf_step
+            # If some lamdb has beed updating for a more than a long period, try to increase it to converge faster.
+            elif (scf_step - beta_lastupdate_iter) > 3:
+                beta /= 0.95
+                beta_lastupdate_iter = scf_step
+            old_rho_conv = np.sum(np.abs(rho_fragment - rho_molecule)*w)
+            rho_convergence.append(old_rho_conv)
+            print(F'Iteration: {scf_step-1} Beta = {beta}   Delta_D = {self.fragments_Da.sum() + self.fragments_Db.sum() - (self.molecule.Da.np.sum() + self.molecule.Db.np.sum())} Delta_Rho = {old_rho_conv}')
+            delta_vp_a = beta * (self.fragments_Da - self.molecule.Da.np)
+            delta_vp_b = beta * (self.fragments_Db - self.molecule.Db.np)
+            delta_vp_a = 0.5 * (delta_vp_a + delta_vp_a.T)
+            delta_vp_b = 0.5 * (delta_vp_b + delta_vp_b.T)
+            delta_vp_a =  psi4.core.Matrix.from_array( np.einsum('ijmn,mn->ij', S, delta_vp_a))
+            delta_vp_b =  psi4.core.Matrix.from_array( np.einsum('ijmn,mn->ij', S, delta_vp_b))
 
-            print(F'Iteration: {scf_step} Delta_E = {total_energies - self.molecule.energy} Delta_D = {total_density_a.sum() + total_density_b.sum() - (self.molecule.Da.np.sum() + self.molecule.Db.np.sum())}')
-
-            delta_vp_a = beta * (total_density_a - (self.molecule.Da.np))
-            delta_vp_b = beta * (total_density_b - (self.molecule.Db.np))
-            #S, D_mnQ, S_pmn, Spq = fouroverlap(self.fragments[0].wfn, self.fragments[0].geometry, "STO-3G", self.fragments[0].mints)
-            #S_2, d_2, S_pmn_2, Spq_2 = fouroverlap(self.fragments[1].wfn, self.fragments[1].geometry, "STO-3G")
-            #delta_vp =  psi4.core.Matrix.from_array( np.einsum('ijmn,mn->ij', S, delta_vp))
             delta_vp_a = psi4.core.Matrix.from_array(delta_vp_a)
             delta_vp_b = psi4.core.Matrix.from_array(delta_vp_b)
-
+            #
             vp_a.axpy(1.0, delta_vp_a)
             vp_b.axpy(1.0, delta_vp_b)
-
+            #
             vp_total.axpy(1.0, vp_a)
             vp_total.axpy(1.0, vp_b)
 
-        return vp_a, vp_b, vp_total
+            vp =  [ vp_a , vp_b ]
+
+            # Calculation w/ vp
+            for i in range(self.nfragments):
+                self.fragments[i].scf(vp_add=True, vp_matrix=vp, maxiter=1400)
+                Ef += self.fragments[i].energy
+            Ef = Ef*0.5
+            Ep_convergence.append(self.molecule.energy - self.molecule.Enuc - Ef)
+            #if np.isclose( total_densities.sum(),self.molecule.D.sum(), atol=1e-5) :
+            # if np.isclose(total_energies, self.molecule.energy, atol):
+            #     break
+            if beta < 1e-7:
+                break
+        return vp_a,vp_b,vp_total,rho_convergence,Ep_convergence
 
 class Embedding:
     def __init__(self, fragments, molecule):
