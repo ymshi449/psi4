@@ -6,7 +6,6 @@ pdft.py
 import psi4
 import qcelemental as qc
 import numpy as np
-import pandas as pd
 import os
 
 
@@ -475,7 +474,7 @@ class U_Molecule():
         self.energies = None
 
         # Run some iterations to initialize
-        self.scf()
+        # self.scf()
 
     def initialize(self):
         """
@@ -699,7 +698,6 @@ class U_Molecule():
         energies = {   self.geometry.name() : [Core, (Hartree_a + Hartree_b) * 0.5, ks_e, self.Enuc, SCF_E]   }
         ks_index = ["Core", "Hartree", "Exchange Correlation", "Nuclear Repulsion", "Total Energy"]
         #energies = {"Core": [Core], "Hartree":[(Hartree_a + Hartree_b) * 0.5], "Exchange Correlation": [ks_e], "Nuclear Repulsion": [self.Enuc], "Total Energy": [SCF_E]} 
-        pandas = pd.DataFrame(data = energies, index=ks_index)
 
         self.Da = D_a
         self.Db = D_b
@@ -708,8 +706,7 @@ class U_Molecule():
         self.epsilon_a = eigs_a
         self.epsilon_b = eigs_b
         self.energy = SCF_E
-        self.energies = pandas
-    
+
 
 class U_Embedding:
     def __init__(self, fragments, molecule):
@@ -721,7 +718,7 @@ class U_Embedding:
         #from mehtods
         self.fragments_Da = None
         self.fragments_Db = None
-        self.get_density_sum()
+        # self.get_density_sum()
 
     def get_energies(self):
         total = []

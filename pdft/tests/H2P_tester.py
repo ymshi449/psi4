@@ -28,12 +28,14 @@ symmetry c1""")
 Full_Molec.set_name("H2P")
 
 #Psi4 Options:
-psi4.set_options({'DFT_SPHERICAL_POINTS': 110,
-                  'DFT_RADIAL_POINTS':    5,
-                  'REFERENCE' : 'RKS'})
+psi4.set_options({
+    # 'DFT_SPHERICAL_POINTS': 110,
+    # 'DFT_RADIAL_POINTS':    5,
+    'REFERENCE' : 'RKS'}
+)
 
-psi4.set_options({'cubeprop_tasks' : ['density'],
-                 'cubic_grid_spacing': [0.1, 0.1, 0.1]})
+# psi4.set_options({'cubeprop_tasks' : ['density'],
+#                  'cubic_grid_spacing': [0.1, 0.1, 0.1]})
 
 # energy_3, wfn_3 = psi4.energy("SVWN/cc-pVDZ", molecule=mol_geometry, return_wfn=True)
 
@@ -45,7 +47,7 @@ mol = pdft.U_Molecule(Full_Molec, "CC-PVDZ", "SVWN")
 
 #Start a pdft systemm, and perform calculation to find vp
 pdfter = pdft.U_Embedding([f1, f2], mol)
-vp,vpa,vpb,rho_conv, ep_conv = pdfter.find_vp_response(maxiter=49, beta=0.1, atol=1e-5)
+# vp,vpa,vpb,rho_conv, ep_conv = pdfter.find_vp_response(maxiter=49, beta=0.1, atol=1e-5)
 #%%
 # pdfter.get_energies()
 #%%
